@@ -1,0 +1,27 @@
+---
+description: Go API conventions for the forecast package
+alwaysApply: true
+---
+
+# Go conventions
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Package
+
+- Single root package `forecast`
+- Module: `github.com/eduard-kolotushin/timeseries-forecast`
+- Go 1.26+
+
+## API
+
+- Fit functions return `Fitted`
+- `Forecast(h)` returns a new `timeseries.Series[float64]`
+- Do not mutate caller series
+- Pre-size forecast slices to `h`
+
+## Quality
+
+- Table-driven tests next to code
+- No drive-by refactors
+- Linear-time fit; no nested scans over the training series

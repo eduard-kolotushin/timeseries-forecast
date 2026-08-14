@@ -1,0 +1,24 @@
+---
+description: Respect forecasting intentions and keep models out of the core timeseries package
+alwaysApply: true
+---
+
+# Project intentions
+
+Read [docs/INTENTIONS.md](docs/INTENTIONS.md) before expanding scope.
+
+## Stay in v1
+
+Allowed: naive/mean/drift/seasonal naive, SES, Holt, holdout evaluate, MAE/RMSE/MAPE.
+
+Do **not** add without updating INTENTIONS first:
+
+- ARIMA, Prophet, ML models
+- Prediction intervals
+- Multivariate forecasts
+- I/O or plotting
+- A forked Series type
+
+## Use the sibling library
+
+Input and output are `timeseries.Series[float64]`. Use the public API only. Local development uses `replace => ../timeseries`.

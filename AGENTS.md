@@ -1,0 +1,42 @@
+# AGENTS.md
+
+Operating manual for agents working in this repository.
+
+## Project
+
+Univariate forecasting on top of `github.com/eduard-kolotushin/timeseries`.
+
+- **Module:** `github.com/eduard-kolotushin/timeseries-forecast`
+- **Package:** `forecast`
+- **Go:** 1.26+
+- **Local sibling:** `../timeseries` via `go.mod` replace
+
+## Read first
+
+1. [docs/INTENTIONS.md](docs/INTENTIONS.md) — product scope and non-goals
+2. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — API, models, evaluation
+
+This repo is one root of the Cursor workspace `timeseries-workspace.code-workspace` (sibling of `timeseries`). Do not fold forecasting into the core timeseries package.
+
+## Hard constraints
+
+- Depend on `timeseries.Series[float64]` for input and output; do not fork Series
+- Public ops do not mutate caller series
+- Future timestamps: last time + `k*step` for horizon `k=1..h` (step inferred from the last interval unless given)
+- Missing values: DropNA before fit; `math.NaN()` in outputs where undefined
+- Stay within v1 scope unless `docs/INTENTIONS.md` is updated first
+- Implement fits in linear time; pre-size forecast slices
+
+## v1 in scope
+
+Naive, mean, drift, seasonal naive, SES, Holt; holdout evaluate; MAE/RMSE/MAPE.
+
+## v1 out of scope
+
+ARIMA/SARIMA, Prophet, ML models, multivariate, prediction intervals, I/O, plotting.
+
+## Workflow
+
+- Table-driven tests next to the code under test
+- Use a `replace` directive for the local timeseries module while developing
+- Do not copy Series internals; use the public timeseries API only
