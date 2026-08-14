@@ -16,7 +16,7 @@ Do **not** add without updating INTENTIONS first:
 - ARIMA, Prophet, ML models
 - Prediction intervals
 - Multivariate forecasts
-- I/O or plotting
+- I/O or plotting (sibling `timeseries-grafana`)
 - A forked Series type
 
 ## Use the sibling library

@@ -6,7 +6,7 @@ Univariate forecasting for [`timeseries`](https://github.com/eduard-kolotushin/t
 **Package:** `forecast`  
 **Go:** 1.26+
 
-This repo is a sibling of the core timeseries library. Open both with [`../timeseries-workspace.code-workspace`](../timeseries-workspace.code-workspace).
+This repo is a sibling of the core timeseries library. Grafana visualization lives in [`timeseries-grafana`](../timeseries-grafana). Open all three with [`../timeseries-workspace.code-workspace`](../timeseries-workspace.code-workspace).
 
 See [docs/INTENTIONS.md](docs/INTENTIONS.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 

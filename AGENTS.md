@@ -16,7 +16,7 @@ Univariate forecasting on top of `github.com/eduard-kolotushin/timeseries`.
 1. [docs/INTENTIONS.md](docs/INTENTIONS.md) — product scope and non-goals
 2. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — API, models, evaluation
 
-This repo is one root of the Cursor workspace `timeseries-workspace.code-workspace` (sibling of `timeseries`). Do not fold forecasting into the core timeseries package.
+This repo is one root of the Cursor workspace `timeseries-workspace.code-workspace` (sibling of `timeseries` and `timeseries-grafana`). Do not fold forecasting into the core timeseries package.
 
 ## Hard constraints
 
@@ -33,7 +33,7 @@ Naive, mean, drift, seasonal naive, SES, Holt; holdout evaluate; MAE/RMSE/MAPE.
 
 ## v1 out of scope
 
-ARIMA/SARIMA, Prophet, ML models, multivariate, prediction intervals, I/O, plotting.
+ARIMA/SARIMA, Prophet, ML models, multivariate, prediction intervals, I/O, plotting (see sibling `timeseries-grafana`).
 
 ## Workflow
 

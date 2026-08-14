@@ -34,7 +34,7 @@ Do not add these without first updating this document:
 - Machine learning / neural forecasters
 - Multivariate / panel models
 - Prediction intervals / quantile forecasts
-- CSV/JSON I/O or plotting
+- CSV/JSON I/O or plotting (visualization lives in sibling `timeseries-grafana`)
 - Duplicating Series ops that belong in `timeseries`
 
 ## Quality bar
