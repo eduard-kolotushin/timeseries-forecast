@@ -37,6 +37,8 @@ func TestProductionCalendarRU2026(t *testing.T) {
 		{"may8 short workday", mskDate(2026, 5, 8, 12), ClassWorkday},
 		{"missing year saturday", mskDate(2025, 1, 4, 12), ClassWeekend},
 		{"missing year monday", mskDate(2025, 1, 6, 12), ClassWorkday},
+		{"uncovered 2015 new year utc thursday", time.Date(2015, 1, 1, 12, 0, 0, 0, time.UTC), ClassWorkday},
+		{"uncovered 2015 saturday utc", time.Date(2015, 9, 12, 0, 30, 0, 0, time.UTC), ClassWeekend},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := cal.Classify(tc.t); got != tc.class {
@@ -60,6 +62,26 @@ func TestCalendarOffUTC(t *testing.T) {
 	holidayUTC := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC) // Thursday, New Year
 	if cal.Classify(holidayUTC) != ClassWorkday {
 		t.Fatalf("calendar off must not use holiday class: %d", cal.Classify(holidayUTC))
+	}
+}
+
+func TestCalendarUncoveredYearUsesUTCNotMoscow(t *testing.T) {
+	t.Parallel()
+	cal, err := CalendarRU()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 2015 is not in ru.csv. 00:30 UTC must stay hour 0, not Moscow 03:30.
+	t0 := time.Date(2015, 9, 12, 0, 30, 0, 0, time.UTC)
+	if zoneFor(cal, t0) != time.UTC {
+		t.Fatal("uncovered year must use UTC")
+	}
+	if cal.Classify(t0) != ClassWeekend {
+		t.Fatalf("saturday utc: %d", cal.Classify(t0))
+	}
+	t2026 := time.Date(2026, 1, 6, 12, 0, 0, 0, time.UTC) // holiday Tuesday in Moscow
+	if zoneFor(cal, t2026) == time.UTC {
+		t.Fatal("covered year must use calendar location")
 	}
 }
 

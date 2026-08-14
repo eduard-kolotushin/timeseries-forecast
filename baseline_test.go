@@ -208,3 +208,98 @@ func TestSeasonalBaselineHourOfWeekEmptyHourUsesSameWeekdayMean(t *testing.T) {
 		t.Fatalf("Monday 00:00 got %v want overall %v", fc.Values()[21], overall)
 	}
 }
+
+func TestSeasonalBaselineHourOfWeekCalendarSplitsWeekendAndHoliday(t *testing.T) {
+	t.Parallel()
+	// Only 10 January is listed → 10 Jan 2026 (Saturday) is weekend; 17 Jan is a working Saturday.
+	cal, err := ParseProductionCalendar([]byte("2026;10;;;;;;;;;;;;\n"), time.UTC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sat := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
+	workSat := time.Date(2026, 1, 17, 12, 0, 0, 0, time.UTC)
+	s := mustSeries([]time.Time{sat, workSat}, []float64{10, 50})
+
+	off, err := FitSeasonalBaseline(s, SeasonHourOfWeek, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fcOff, err := off.Forecast(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fcOff.Values()[0] != 30 {
+		t.Fatalf("calendar off Saturday mean got %v want 30", fcOff.Values()[0])
+	}
+
+	on, err := FitSeasonalBaseline(s, SeasonHourOfWeek, cal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fcOn, err := on.Forecast(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 24 Jan is unlisted Saturday → workday Saturday, not the weekend Saturday mean.
+	if fcOn.Values()[0] != 50 {
+		t.Fatalf("working Saturday got %v want 50 (must not mix weekend Saturday)", fcOn.Values()[0])
+	}
+
+	ru, err := CalendarRU()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hol := mustSeries(
+		[]time.Time{mskDate(2026, 1, 1, 12), mskDate(2026, 1, 8, 12), mskDate(2026, 1, 15, 12)},
+		[]float64{100, 100, 20},
+	)
+	m, err := FitSeasonalBaseline(hol, SeasonHourOfWeek, ru)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fc, err := m.Forecast(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fc.Values()[0] != 20 {
+		t.Fatalf("workday Thursday got %v want 20 (holiday Thursday must not leak)", fc.Values()[0])
+	}
+}
+
+func TestSeasonalBaselineUncoveredYearMatchesCalendarOff(t *testing.T) {
+	t.Parallel()
+	// 2015-09-12 is Saturday and is not in the RU file. RU must not shift hours to Moscow.
+	start := time.Date(2015, 9, 12, 0, 0, 0, 0, time.UTC)
+	times := make([]time.Time, 24)
+	values := make([]float64, 24)
+	for i := range 24 {
+		times[i] = start.Add(time.Duration(i) * time.Hour)
+		values[i] = float64(i)
+	}
+	s := mustSeries(times, values)
+	off, err := FitSeasonalBaseline(s, SeasonHour, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ru, err := CalendarRU()
+	if err != nil {
+		t.Fatal(err)
+	}
+	on, err := FitSeasonalBaseline(s, SeasonHour, ru)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fcOff, err := off.Forecast(3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fcOn, err := on.Forecast(3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range 3 {
+		if fcOff.Values()[i] != fcOn.Values()[i] {
+			t.Fatalf("k=%d off=%v ru=%v (2015 must ignore 2026 calendar)", i, fcOff.Values()[i], fcOn.Values()[i])
+		}
+	}
+}

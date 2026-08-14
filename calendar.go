@@ -54,24 +54,34 @@ func (c *Calendar) Location() *time.Location {
 	return c.loc
 }
 
-// Classify returns the day class of t in the calendar's location.
+// Classify returns the day class of t.
+// Years not present in the calendar file are treated as calendar off
+// (UTC, Saturday/Sunday weekend, no holidays), so a 2026 table cannot
+// affect 2015 timestamps via timezone or holiday rules.
 func (c *Calendar) Classify(t time.Time) DayClass {
-	loc := time.UTC
-	if c != nil && c.loc != nil {
-		loc = c.loc
+	if c == nil || c.years == nil || c.loc == nil {
+		return weekendOrWorkday(t.In(time.UTC).Weekday())
 	}
-	local := t.In(loc)
-	if c == nil || c.years == nil {
-		return weekendOrWorkday(local.Weekday())
-	}
+	local := t.In(c.loc)
 	y, m, d := local.Date()
 	if _, ok := c.years[y]; !ok {
-		return weekendOrWorkday(local.Weekday())
+		return weekendOrWorkday(t.In(time.UTC).Weekday())
 	}
 	if cl, ok := c.class[civilDate{y, m, d}]; ok {
 		return cl
 	}
 	return ClassWorkday
+}
+
+// zoneFor is UTC when cal is off or t's civil year (in cal.Location) is not in the file.
+func zoneFor(cal *Calendar, t time.Time) *time.Location {
+	if cal == nil || cal.loc == nil || cal.years == nil {
+		return time.UTC
+	}
+	if _, ok := cal.years[t.In(cal.loc).Year()]; !ok {
+		return time.UTC
+	}
+	return cal.loc
 }
 
 func weekendOrWorkday(wd time.Weekday) DayClass {

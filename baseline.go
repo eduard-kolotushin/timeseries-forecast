@@ -15,8 +15,9 @@ const (
 	SeasonHour Seasonality = iota + 1
 	// SeasonDay buckets holidays separately and other days by weekday.
 	SeasonDay
-	// SeasonHourOfWeek buckets by (weekday, hour), with holidays in a dedicated hour profile.
-	// Empty weekday hours use that weekday's mean, then overall; they do not copy another weekday.
+	// SeasonHourOfWeek buckets by (day class, weekday, hour).
+	// Weekend Saturday is not a working Saturday; Sunday does not copy Saturday.
+	// Empty slots use that (class, weekday) mean, then overall; holidays also fall back by hour.
 	SeasonHourOfWeek
 )
 
@@ -26,7 +27,7 @@ const (
 	nDOW      = 7
 	nHourKeys = nClass * nHour // 72
 	nDayKeys  = nDOW + 1       // 7 weekdays + holiday
-	nWeekKeys = nDOW*nHour + nHour
+	nWeekKeys = nClass * nDOW * nHour // 504
 )
 
 func (s Seasonality) nKeys() int {
@@ -52,10 +53,7 @@ func seasonKey(season Seasonality, class DayClass, hour int, dow time.Weekday) i
 		}
 		return int(dow)
 	case SeasonHourOfWeek:
-		if class == ClassHoliday {
-			return nDOW*nHour + hour
-		}
-		return int(dow)*nHour + hour
+		return int(class)*nDOW*nHour + int(dow)*nHour + hour
 	default:
 		return 0
 	}
@@ -63,8 +61,11 @@ func seasonKey(season Seasonality, class DayClass, hour int, dow time.Weekday) i
 
 // FitSeasonalBaseline forecasts the mean of historical values that share a seasonal key.
 // cal may be nil (calendar off: UTC, weekend = Sat/Sun, no holidays).
-// Hour-of-week does not copy one weekday onto another: empty hours use that
-// weekday's mean, then the overall mean. Holidays keep a separate hour profile.
+// A calendar applies only to timestamps whose civil year is in the file;
+// other years use calendar-off rules (a 2026 table does not affect 2015).
+// Hour-of-week keys (class, weekday, hour) so the calendar's weekend/holiday
+// classes are distinct from workdays on the same weekday. Empty hours use that
+// (class, weekday) mean, then overall; they do not copy another weekday.
 func FitSeasonalBaseline(s timeseries.Series[float64], season Seasonality, cal *Calendar) (Fitted, error) {
 	nKeys := season.nKeys()
 	if nKeys == 0 {
@@ -78,25 +79,20 @@ func FitSeasonalBaseline(s timeseries.Series[float64], season Seasonality, cal *
 		return nil, err
 	}
 
-	loc := time.UTC
-	if cal != nil {
-		loc = cal.Location()
-	}
-
 	sum := make([]float64, nKeys)
 	count := make([]int, nKeys)
 	var classHourSum [nClass][nHour]float64
 	var classHourN [nClass][nHour]int
 	var classSum [nClass]float64
 	var classN [nClass]int
-	var dowSum [nDOW]float64
-	var dowN [nDOW]int
+	var classDowSum [nClass][nDOW]float64
+	var classDowN [nClass][nDOW]int
 	var overallSum float64
 	var overallN int
 
 	for i, t := range p.times {
 		v := p.values[i]
-		local := t.In(loc)
+		local := t.In(zoneFor(cal, t))
 		class := cal.Classify(t)
 		hour := local.Hour()
 		dow := local.Weekday()
@@ -107,16 +103,14 @@ func FitSeasonalBaseline(s timeseries.Series[float64], season Seasonality, cal *
 		classHourN[class][hour]++
 		classSum[class] += v
 		classN[class]++
-		if class != ClassHoliday {
-			dowSum[dow] += v
-			dowN[dow]++
-		}
+		classDowSum[class][dow] += v
+		classDowN[class][dow]++
 		overallSum += v
 		overallN++
 	}
 
 	overall := overallSum / float64(overallN)
-	means := fillBaselineMeans(season, sum, count, classHourSum, classHourN, classSum, classN, dowSum, dowN, overall)
+	means := fillBaselineMeans(season, sum, count, classHourSum, classHourN, classSum, classN, classDowSum, classDowN, overall)
 
 	last := p.last()
 	step := p.step
@@ -125,7 +119,7 @@ func FitSeasonalBaseline(s timeseries.Series[float64], season Seasonality, cal *
 		step:     step,
 		at: func(k int) float64 {
 			t := last.Add(time.Duration(k) * step)
-			local := t.In(loc)
+			local := t.In(zoneFor(cal, t))
 			key := seasonKey(season, cal.Classify(t), local.Hour(), local.Weekday())
 			return means[key]
 		},
@@ -140,8 +134,8 @@ func fillBaselineMeans(
 	classHourN [nClass][nHour]int,
 	classSum [nClass]float64,
 	classN [nClass]int,
-	dowSum [nDOW]float64,
-	dowN [nDOW]int,
+	classDowSum [nClass][nDOW]float64,
+	classDowN [nClass][nDOW]int,
 	overall float64,
 ) []float64 {
 	means := make([]float64, len(count))
@@ -222,29 +216,25 @@ func fillBaselineMeans(
 			means[nDOW] = fallbackClass(ClassHoliday)
 		}
 	case SeasonHourOfWeek:
-		for dow := 0; dow < nDOW; dow++ {
-			for hour := 0; hour < nHour; hour++ {
-				key := dow*nHour + hour
-				if count[key] > 0 {
-					means[key] = sum[key] / float64(count[key])
-					continue
+		for class := ClassWorkday; class <= ClassHoliday; class++ {
+			for dow := 0; dow < nDOW; dow++ {
+				for hour := 0; hour < nHour; hour++ {
+					key := int(class)*nDOW*nHour + dow*nHour + hour
+					if count[key] > 0 {
+						means[key] = sum[key] / float64(count[key])
+						continue
+					}
+					if n := classDowN[class][dow]; n > 0 {
+						means[key] = classDowSum[class][dow] / float64(n)
+						continue
+					}
+					if class == ClassHoliday {
+						means[key] = fallbackHour(ClassHoliday, hour)
+						continue
+					}
+					means[key] = overall
 				}
-				// Same weekday only: do not copy another day's hour profile
-				// (Saturday must not fill Sunday).
-				if n := dowN[dow]; n > 0 {
-					means[key] = dowSum[dow] / float64(n)
-					continue
-				}
-				means[key] = overall
 			}
-		}
-		for hour := 0; hour < nHour; hour++ {
-			key := nDOW*nHour + hour
-			if count[key] > 0 {
-				means[key] = sum[key] / float64(count[key])
-				continue
-			}
-			means[key] = fallbackHour(ClassHoliday, hour)
 		}
 	}
 	if math.IsNaN(overall) {

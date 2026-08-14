@@ -33,7 +33,7 @@ func FitSES(s timeseries.Series[float64], alpha float64) (Fitted, error)
 func FitHolt(s timeseries.Series[float64], alpha, beta float64) (Fitted, error)
 ```
 
-`cal == nil` means calendar off (UTC, weekend = Sat/Sun). `CalendarByName("ru")` loads the embedded Russian production calendar (`Europe/Moscow`).
+`cal == nil` means calendar off (UTC, weekend = Sat/Sun). `CalendarByName("ru")` loads the embedded Russian production calendar (`Europe/Moscow`). A timestamp whose civil year is not in the file is classified as calendar off; holiday rules and the calendar timezone do not apply to other years.
 
 Callers use the public `timeseries` API only (`Times`, `Values`, `New`, `DropNA`, `SliceIndex`, `AlignFloat`). Do not reach into unexported Series fields.
 
@@ -47,7 +47,7 @@ Optimize computation first: work per observation at fit, work per horizon step a
 
 - Copy `Times()` / `Values()` once at fit; work on those slices
 - Fit is one O(n) pass (SES, Holt, mean, seasonal baseline); drift and naive are O(1) after prepare
-- Seasonal baseline keeps a pre-sized means table filled at fit. Hour/day: holiday → weekend → workday → overall. Hour-of-week: exact (weekday, hour), else that weekday's mean, else overall (weekdays do not share hours; holidays still use hour fallbacks)
+- Seasonal baseline keeps a pre-sized means table filled at fit. Hour/day: holiday → weekend → workday → overall. Hour-of-week: (class, weekday, hour), else that class+weekday mean, else overall (Sunday does not copy Saturday; working Saturday is not weekend Saturday; holidays fall back by hour)
 - Fitted models keep only forecast state (level/trend/season/last/means), not the training series
 - `Forecast` is one O(h) loop; each step is O(1)
 - Forecast allocates exactly `h` times and `h` values
