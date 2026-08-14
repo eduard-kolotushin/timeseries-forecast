@@ -25,7 +25,7 @@ This repo is one root of the Cursor workspace `timeseries-workspace.code-workspa
 - Future timestamps: last time + `k*step` for horizon `k=1..h` (step inferred from the last interval unless given)
 - Missing values: DropNA before fit; `math.NaN()` in outputs where undefined
 - Stay within v1 scope unless `docs/INTENTIONS.md` is updated first
-- Implement fits in linear time; pre-size forecast slices
+- Implement fits in linear time; O(1) work per horizon step; pre-size forecast slices
 
 ## v1 in scope
 

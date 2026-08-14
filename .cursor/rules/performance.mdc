@@ -1,0 +1,25 @@
+---
+description: Optimize forecast computation (linear-time fit, no redundant work)
+alwaysApply: true
+---
+
+# Performance
+
+This package must be fast as well as correct. Optimize **computation**: work per observation and per horizon step. Follow [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Do
+
+- Fit in one **O(n)** pass over training values (SES, Holt, mean, drift)
+- Reduce the fitted model to the state `Forecast` needs (last, step, level/trend, season); do not keep the full series
+- Fill the horizon in one **O(h)** loop; `at(k)` must be O(1)
+- Copy `Times()` / `Values()` once in `prepare`; compute on those slices
+- Score metrics in one pass over aligned values
+- Add or update `bench_test.go` when changing a fit or `Forecast` hot path
+
+## Do not
+
+- Re-scan training values inside `Forecast(h)` or per horizon step
+- Nested O(n²) loops over observations (including seasonal)
+- Re-fit on every `Forecast` call
+- Clone the training series unless a public helper needs an independent copy
+- Add SIMD, GPU, or a parallel API without updating INTENTIONS

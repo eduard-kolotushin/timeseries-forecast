@@ -24,4 +24,4 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 - Table-driven tests next to code
 - No drive-by refactors
-- Linear-time fit; no nested scans over the training series
+- Fit and forecast stay linear-time (see performance.mdc)

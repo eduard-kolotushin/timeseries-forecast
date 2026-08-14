@@ -4,7 +4,7 @@
 
 Forecast future values of a univariate `timeseries.Series[float64]`. This package consumes the core timeseries library; it does not reimplement Series operations.
 
-Implement models in an optimized way: one pass to fit, pre-sized forecast output, no extra copies of the training series.
+Implement models in an **optimized** way: one pass to fit, O(1) work per horizon step, pre-sized forecast output, no extra copies of the training series. Correctness stays first; computation cost is a standing design constraint.
 
 ## Locked choices
 
@@ -36,6 +36,15 @@ Do not add these without first updating this document:
 - Prediction intervals / quantile forecasts
 - CSV/JSON I/O or plotting (visualization lives in sibling `timeseries-grafana`)
 - Duplicating Series ops that belong in `timeseries`
+
+## Performance aims
+
+- Prefer **O(n)** fit and **O(h)** forecast over nested scans
+- Fitted state is the recurrence result, not the training series
+- `Forecast(k)` arithmetic is **O(1)** per step (no re-walk of history)
+- Copy `Times()` / `Values()` once at fit; compute on those slices
+- Allocation should track **horizon size**, not hidden intermediates
+- Add or update benchmarks when changing a fit or forecast hot path
 
 ## Quality bar
 

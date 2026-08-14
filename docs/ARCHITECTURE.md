@@ -38,9 +38,13 @@ Forecast `h` is the number of future points. Timestamps are `last.Add(k*step)` f
 
 ## Performance
 
+Optimize computation first: work per observation at fit, work per horizon step at forecast.
+
 - Copy `Times()` / `Values()` once at fit; work on those slices
+- Fit is one O(n) pass (SES, Holt, mean); drift and naive are O(1) after prepare
+- Fitted models keep only forecast state (level/trend/season/last), not the training series
+- `Forecast` is one O(h) loop; each step is O(1)
 - Forecast allocates exactly `h` times and `h` values
-- SES/Holt are a single O(n) pass
 - Do not clone the training series unless a public helper needs an independent copy
 
 ## Testing
