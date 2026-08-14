@@ -138,3 +138,73 @@ func TestSeasonalBaselineHourOfWeek(t *testing.T) {
 		t.Fatalf("hour-of-week monday 10 got %v", fc.Values()[10])
 	}
 }
+
+func TestSeasonalBaselineHourOfWeekDoesNotCopySaturdayOntoSunday(t *testing.T) {
+	t.Parallel()
+	// Saturday hours 0..23 with distinct values. Sunday has no observations.
+	start := time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC) // Saturday
+	times := make([]time.Time, 24)
+	values := make([]float64, 24)
+	var sum float64
+	for i := range 24 {
+		times[i] = start.Add(time.Duration(i) * time.Hour)
+		values[i] = float64(i)
+		sum += float64(i)
+	}
+	overall := sum / 24
+	m, err := FitSeasonalBaseline(mustSeries(times, values), SeasonHourOfWeek, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fc, err := m.Forecast(25)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Last is Saturday 23:00. k=1..24 are Sunday 00:00..23:00.
+	for i := range 24 {
+		if fc.Values()[i] != overall {
+			t.Fatalf("Sunday hour %d got %v want overall %v (must not copy Saturday hour %d)", i, fc.Values()[i], overall, i)
+		}
+	}
+	if fc.Values()[24] != overall {
+		t.Fatalf("Monday 00:00 got %v want overall %v", fc.Values()[24], overall)
+	}
+}
+
+func TestSeasonalBaselineHourOfWeekEmptyHourUsesSameWeekdayMean(t *testing.T) {
+	t.Parallel()
+	sat := time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC)
+	times := make([]time.Time, 0, 27)
+	values := make([]float64, 0, 27)
+	for h := range 24 {
+		times = append(times, sat.Add(time.Duration(h)*time.Hour))
+		values = append(values, 100+float64(h))
+	}
+	sun := sat.Add(24 * time.Hour)
+	times = append(times, sun, sun.Add(time.Hour), sun.Add(2*time.Hour))
+	values = append(values, 5, 6, 7)
+	sundayMean := 6.0
+	m, err := FitSeasonalBaseline(mustSeries(times, values), SeasonHourOfWeek, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fc, err := m.Forecast(22)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Last is Sunday 02:00. k=1 is Sunday 03:00 — empty Sunday hour, not Saturday 03:00 (103).
+	if fc.Values()[0] != sundayMean {
+		t.Fatalf("Sunday 03:00 got %v want Sunday mean %v", fc.Values()[0], sundayMean)
+	}
+	if fc.Values()[20] != sundayMean {
+		t.Fatalf("Sunday 23:00 got %v want Sunday mean %v", fc.Values()[20], sundayMean)
+	}
+	var overallSum float64
+	for _, v := range values {
+		overallSum += v
+	}
+	overall := overallSum / float64(len(values))
+	if fc.Values()[21] != overall {
+		t.Fatalf("Monday 00:00 got %v want overall %v", fc.Values()[21], overall)
+	}
+}

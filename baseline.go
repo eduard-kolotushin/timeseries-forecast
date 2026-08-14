@@ -16,6 +16,7 @@ const (
 	// SeasonDay buckets holidays separately and other days by weekday.
 	SeasonDay
 	// SeasonHourOfWeek buckets by (weekday, hour), with holidays in a dedicated hour profile.
+	// Empty weekday hours use that weekday's mean, then overall; they do not copy another weekday.
 	SeasonHourOfWeek
 )
 
@@ -62,6 +63,8 @@ func seasonKey(season Seasonality, class DayClass, hour int, dow time.Weekday) i
 
 // FitSeasonalBaseline forecasts the mean of historical values that share a seasonal key.
 // cal may be nil (calendar off: UTC, weekend = Sat/Sun, no holidays).
+// Hour-of-week does not copy one weekday onto another: empty hours use that
+// weekday's mean, then the overall mean. Holidays keep a separate hour profile.
 func FitSeasonalBaseline(s timeseries.Series[float64], season Seasonality, cal *Calendar) (Fitted, error) {
 	nKeys := season.nKeys()
 	if nKeys == 0 {
@@ -86,6 +89,8 @@ func FitSeasonalBaseline(s timeseries.Series[float64], season Seasonality, cal *
 	var classHourN [nClass][nHour]int
 	var classSum [nClass]float64
 	var classN [nClass]int
+	var dowSum [nDOW]float64
+	var dowN [nDOW]int
 	var overallSum float64
 	var overallN int
 
@@ -102,12 +107,16 @@ func FitSeasonalBaseline(s timeseries.Series[float64], season Seasonality, cal *
 		classHourN[class][hour]++
 		classSum[class] += v
 		classN[class]++
+		if class != ClassHoliday {
+			dowSum[dow] += v
+			dowN[dow]++
+		}
 		overallSum += v
 		overallN++
 	}
 
 	overall := overallSum / float64(overallN)
-	means := fillBaselineMeans(season, sum, count, classHourSum, classHourN, classSum, classN, overall)
+	means := fillBaselineMeans(season, sum, count, classHourSum, classHourN, classSum, classN, dowSum, dowN, overall)
 
 	last := p.last()
 	step := p.step
@@ -131,6 +140,8 @@ func fillBaselineMeans(
 	classHourN [nClass][nHour]int,
 	classSum [nClass]float64,
 	classN [nClass]int,
+	dowSum [nDOW]float64,
+	dowN [nDOW]int,
 	overall float64,
 ) []float64 {
 	means := make([]float64, len(count))
@@ -212,17 +223,19 @@ func fillBaselineMeans(
 		}
 	case SeasonHourOfWeek:
 		for dow := 0; dow < nDOW; dow++ {
-			c := ClassWorkday
-			if time.Weekday(dow) == time.Saturday || time.Weekday(dow) == time.Sunday {
-				c = ClassWeekend
-			}
 			for hour := 0; hour < nHour; hour++ {
 				key := dow*nHour + hour
 				if count[key] > 0 {
 					means[key] = sum[key] / float64(count[key])
 					continue
 				}
-				means[key] = fallbackHour(c, hour)
+				// Same weekday only: do not copy another day's hour profile
+				// (Saturday must not fill Sunday).
+				if n := dowN[dow]; n > 0 {
+					means[key] = dowSum[dow] / float64(n)
+					continue
+				}
+				means[key] = overall
 			}
 		}
 		for hour := 0; hour < nHour; hour++ {

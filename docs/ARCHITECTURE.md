@@ -47,7 +47,7 @@ Optimize computation first: work per observation at fit, work per horizon step a
 
 - Copy `Times()` / `Values()` once at fit; work on those slices
 - Fit is one O(n) pass (SES, Holt, mean, seasonal baseline); drift and naive are O(1) after prepare
-- Seasonal baseline keeps a pre-sized means table (holiday → weekend → workday fallbacks filled at fit)
+- Seasonal baseline keeps a pre-sized means table filled at fit. Hour/day: holiday → weekend → workday → overall. Hour-of-week: exact (weekday, hour), else that weekday's mean, else overall (weekdays do not share hours; holidays still use hour fallbacks)
 - Fitted models keep only forecast state (level/trend/season/last/means), not the training series
 - `Forecast` is one O(h) loop; each step is O(1)
 - Forecast allocates exactly `h` times and `h` values
