@@ -29,11 +29,11 @@ This repo is one root of the Cursor workspace `timeseries-workspace.code-workspa
 
 ## v1 in scope
 
-Naive, mean, drift, seasonal naive, SES, Holt; holdout evaluate; MAE/RMSE/MAPE.
+Naive, mean, drift, seasonal naive, seasonal baseline (hour/day/hour-of-week), SES, Holt; optional RU production calendar (default off); holdout evaluate; MAE/RMSE/MAPE.
 
 ## v1 out of scope
 
-ARIMA/SARIMA, Prophet, ML models, multivariate, prediction intervals, I/O, plotting (see sibling `timeseries-grafana`).
+ARIMA/SARIMA, Prophet, ML models, multivariate, prediction intervals, series I/O, plotting (see sibling `timeseries-grafana`). Business calendars belong here, not in `timeseries`.
 
 ## Workflow
 

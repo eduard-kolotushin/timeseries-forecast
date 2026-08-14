@@ -42,6 +42,9 @@ func TestFitErrors(t *testing.T) {
 	if _, err := FitHolt(series(1), 0.5, 0.5); err != ErrTooShort {
 		t.Fatalf("holt short: %v", err)
 	}
+	if _, err := FitSeasonalBaseline(series(1, 2), 0, nil); err != ErrInvalidSeason {
+		t.Fatalf("baseline season: %v", err)
+	}
 }
 
 func TestNaiveMeanDrift(t *testing.T) {

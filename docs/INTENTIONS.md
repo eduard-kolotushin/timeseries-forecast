@@ -16,11 +16,13 @@ Implement models in an **optimized** way: one pass to fit, O(1) work per horizon
 | Go version | 1.26+ |
 | Core series library | sibling `github.com/eduard-kolotushin/timeseries` |
 | Horizon clock | last timestamp + `k * step` |
+| Calendars | Optional, file-embedded production calendars in this package (RU first); default off. Not a Series concern. |
 
 ## v1 must-have
 
 - Fit/forecast API (`Fitted.Forecast(h)`)
-- Models: naive, mean, drift, seasonal naive, simple exponential smoothing, Holt
+- Models: naive, mean, drift, seasonal naive, seasonal baseline (hour / day / hour-of-week), simple exponential smoothing, Holt
+- Optional production calendars (embedded files, RU first; default off) for workday / weekend / holiday classes
 - Infer `step` from the last two observations
 - Holdout evaluation
 - Metrics: MAE, RMSE, MAPE
@@ -34,7 +36,8 @@ Do not add these without first updating this document:
 - Machine learning / neural forecasters
 - Multivariate / panel models
 - Prediction intervals / quantile forecasts
-- CSV/JSON I/O or plotting (visualization lives in sibling `timeseries-grafana`)
+- CSV/JSON I/O for series, or plotting (visualization lives in sibling `timeseries-grafana`)
+- Business calendars in the core `timeseries` library
 - Duplicating Series ops that belong in `timeseries`
 
 ## Performance aims

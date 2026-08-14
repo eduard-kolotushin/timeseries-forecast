@@ -9,8 +9,8 @@ This package must be fast as well as correct. Optimize **computation**: work per
 
 ## Do
 
-- Fit in one **O(n)** pass over training values (SES, Holt, mean, drift)
-- Reduce the fitted model to the state `Forecast` needs (last, step, level/trend, season); do not keep the full series
+- Fit in one **O(n)** pass over training values (SES, Holt, mean, drift, seasonal baseline)
+- Reduce the fitted model to the state `Forecast` needs (last, step, level/trend, season, means); do not keep the full series
 - Fill the horizon in one **O(h)** loop; `at(k)` must be O(1)
 - Copy `Times()` / `Values()` once in `prepare`; compute on those slices
 - Score metrics in one pass over aligned values

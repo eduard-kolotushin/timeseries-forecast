@@ -43,3 +43,11 @@ func BenchmarkForecastNaive(b *testing.B) {
 		_, _ = m.Forecast(64)
 	}
 }
+
+func BenchmarkFitSeasonalBaseline(b *testing.B) {
+	s := benchSeries(10_000)
+	b.ResetTimer()
+	for b.Loop() {
+		_, _ = FitSeasonalBaseline(s, SeasonHour, nil)
+	}
+}

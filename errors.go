@@ -18,6 +18,12 @@ var (
 	// ErrInvalidPeriod is returned when a seasonal period is not positive.
 	ErrInvalidPeriod = errors.New("forecast: seasonal period must be positive")
 
+	// ErrInvalidSeason is returned when seasonal baseline seasonality is not hour, day, or hour-of-week.
+	ErrInvalidSeason = errors.New("forecast: invalid seasonality")
+
+	// ErrUnknownCalendar is returned when a calendar name is not recognized.
+	ErrUnknownCalendar = errors.New("forecast: unknown calendar")
+
 	// ErrTooShort is returned when the series is shorter than the model requires.
 	ErrTooShort = errors.New("forecast: series is too short for this model")
 

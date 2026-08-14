@@ -9,7 +9,7 @@ Read [docs/INTENTIONS.md](docs/INTENTIONS.md) before expanding scope.
 
 ## Stay in v1
 
-Allowed: naive/mean/drift/seasonal naive, SES, Holt, holdout evaluate, MAE/RMSE/MAPE.
+Allowed: naive/mean/drift/seasonal naive, seasonal baseline, SES, Holt, optional production calendars (RU, default off), holdout evaluate, MAE/RMSE/MAPE.
 
 Do **not** add without updating INTENTIONS first:
 
