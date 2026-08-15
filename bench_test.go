@@ -17,6 +17,17 @@ func benchSeries(n int) timeseries.Series[float64] {
 	return timeseries.MustNew(times, values)
 }
 
+func benchMinuteSeries(n int) timeseries.Series[float64] {
+	times := make([]time.Time, n)
+	values := make([]float64, n)
+	start := time.Date(2026, 1, 12, 0, 0, 0, 0, time.UTC)
+	for i := range n {
+		times[i] = start.Add(time.Duration(i) * time.Minute)
+		values[i] = float64(i)
+	}
+	return timeseries.MustNew(times, values)
+}
+
 func BenchmarkFitSES(b *testing.B) {
 	s := benchSeries(10_000)
 	b.ResetTimer()
@@ -49,5 +60,13 @@ func BenchmarkFitSeasonalBaseline(b *testing.B) {
 	b.ResetTimer()
 	for b.Loop() {
 		_, _ = FitSeasonalBaseline(s, SeasonHour, nil)
+	}
+}
+
+func BenchmarkFitSeasonalBaselineMinuteOfWeek(b *testing.B) {
+	s := benchMinuteSeries(10_000)
+	b.ResetTimer()
+	for b.Loop() {
+		_, _ = FitSeasonalBaseline(s, SeasonMinuteOfWeek, nil)
 	}
 }

@@ -21,7 +21,7 @@ Implement models in an **optimized** way: one pass to fit, O(1) work per horizon
 ## v1 must-have
 
 - Fit/forecast API (`Fitted.Forecast(h)`)
-- Models: naive, mean, drift, seasonal naive, seasonal baseline (hour / day / hour-of-week), simple exponential smoothing, Holt
+- Models: naive, mean, drift, seasonal naive, seasonal baseline (hour / day / hour-of-week / minute-of-week), simple exponential smoothing, Holt
 - Optional production calendars (embedded files, RU first; default off) for workday / weekend / holiday classes
 - Infer `step` from the last two observations
 - Holdout evaluation

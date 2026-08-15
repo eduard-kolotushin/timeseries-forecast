@@ -62,7 +62,7 @@ func main() {
 | `FitMean` | training mean |
 | `FitDrift` | last + k × slope |
 | `FitSeasonalNaive` | last season, cycling |
-| `FitSeasonalBaseline` | mean of matching hour / day / hour-of-week buckets (optional RU calendar) |
+| `FitSeasonalBaseline` | mean of matching hour / day / hour-of-week / minute-of-week buckets (optional RU calendar) |
 | `FitSES` | constant smoothed level |
 | `FitHolt` | level + k × trend |
 

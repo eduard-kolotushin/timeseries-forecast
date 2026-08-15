@@ -9,7 +9,7 @@ Single package `forecast`:
 | `fitted.go` | `Fitted` interface, horizon timestamps, prepare/DropNA |
 | `naive.go` | Last-value and mean and drift |
 | `seasonal.go` | Seasonal naive |
-| `baseline.go` | Seasonal baseline (hour / day / hour-of-week means) |
+| `baseline.go` | Seasonal baseline (hour / day / hour-of-week / minute-of-week means) |
 | `calendar.go` | Optional production calendars (RU via `go:embed`) |
 | `ses.go` | Simple exponential smoothing |
 | `holt.go` | Holt linear trend |
@@ -47,7 +47,7 @@ Optimize computation first: work per observation at fit, work per horizon step a
 
 - Copy `Times()` / `Values()` once at fit; work on those slices
 - Fit is one O(n) pass (SES, Holt, mean, seasonal baseline); drift and naive are O(1) after prepare
-- Seasonal baseline keeps a pre-sized means table filled at fit. Hour/day: holiday → weekend → workday → overall. Hour-of-week: (class, weekday, hour), else that class+weekday mean, else overall (Sunday does not copy Saturday; working Saturday is not weekend Saturday; holidays fall back by hour)
+- Seasonal baseline keeps a pre-sized means table filled at fit. Hour/day: holiday → weekend → workday → overall. Hour-of-week: (class, weekday, hour), else that class+weekday mean, else overall. Minute-of-week: (class, weekday, minute of day), else that class+weekday mean, else overall. Sunday does not copy Saturday; working Saturday is not weekend Saturday; holidays fall back by hour or minute of day
 - Fitted models keep only forecast state (level/trend/season/last/means), not the training series
 - `Forecast` is one O(h) loop; each step is O(1)
 - Forecast allocates exactly `h` times and `h` values

@@ -19,15 +19,22 @@ const (
 	// Weekend Saturday is not a working Saturday; Sunday does not copy Saturday.
 	// Empty slots use that (class, weekday) mean, then overall; holidays also fall back by hour.
 	SeasonHourOfWeek
+	// SeasonMinuteOfWeek buckets by (day class, weekday, minute of day).
+	// Same calendar rules as hour-of-week; empty slots use that (class, weekday)
+	// mean, then overall; holidays also fall back by minute of day.
+	SeasonMinuteOfWeek
 )
 
 const (
-	nHour     = 24
-	nClass    = 3
-	nDOW      = 7
-	nHourKeys = nClass * nHour // 72
-	nDayKeys  = nDOW + 1       // 7 weekdays + holiday
-	nWeekKeys = nClass * nDOW * nHour // 504
+	nHour           = 24
+	nHourMinutes    = 60
+	nMinute         = nHour * nHourMinutes // 1440
+	nClass          = 3
+	nDOW            = 7
+	nHourKeys       = nClass * nHour          // 72
+	nDayKeys        = nDOW + 1                // 7 weekdays + holiday
+	nWeekKeys       = nClass * nDOW * nHour   // 504
+	nMinuteWeekKeys = nClass * nDOW * nMinute // 30240
 )
 
 func (s Seasonality) nKeys() int {
@@ -38,22 +45,33 @@ func (s Seasonality) nKeys() int {
 		return nDayKeys
 	case SeasonHourOfWeek:
 		return nWeekKeys
+	case SeasonMinuteOfWeek:
+		return nMinuteWeekKeys
 	default:
 		return 0
 	}
 }
 
-func seasonKey(season Seasonality, class DayClass, hour int, dow time.Weekday) int {
+func seasonSlot(season Seasonality, local time.Time) int {
+	if season == SeasonMinuteOfWeek {
+		return local.Hour()*nHourMinutes + local.Minute()
+	}
+	return local.Hour()
+}
+
+func seasonKey(season Seasonality, class DayClass, slot int, dow time.Weekday) int {
 	switch season {
 	case SeasonHour:
-		return int(class)*nHour + hour
+		return int(class)*nHour + slot
 	case SeasonDay:
 		if class == ClassHoliday {
 			return nDOW
 		}
 		return int(dow)
 	case SeasonHourOfWeek:
-		return int(class)*nDOW*nHour + int(dow)*nHour + hour
+		return int(class)*nDOW*nHour + int(dow)*nHour + slot
+	case SeasonMinuteOfWeek:
+		return int(class)*nDOW*nMinute + int(dow)*nMinute + slot
 	default:
 		return 0
 	}
@@ -63,8 +81,9 @@ func seasonKey(season Seasonality, class DayClass, hour int, dow time.Weekday) i
 // cal may be nil (calendar off: UTC, weekend = Sat/Sun, no holidays).
 // A calendar applies only to timestamps whose civil year is in the file;
 // other years use calendar-off rules (a 2026 table does not affect 2015).
-// Hour-of-week keys (class, weekday, hour) so the calendar's weekend/holiday
-// classes are distinct from workdays on the same weekday. Empty hours use that
+// Hour-of-week keys (class, weekday, hour) and minute-of-week keys
+// (class, weekday, minute of day) so the calendar's weekend/holiday
+// classes are distinct from workdays on the same weekday. Empty slots use that
 // (class, weekday) mean, then overall; they do not copy another weekday.
 func FitSeasonalBaseline(s timeseries.Series[float64], season Seasonality, cal *Calendar) (Fitted, error) {
 	nKeys := season.nKeys()
@@ -83,6 +102,8 @@ func FitSeasonalBaseline(s timeseries.Series[float64], season Seasonality, cal *
 	count := make([]int, nKeys)
 	var classHourSum [nClass][nHour]float64
 	var classHourN [nClass][nHour]int
+	var classMinuteSum [nClass][nMinute]float64
+	var classMinuteN [nClass][nMinute]int
 	var classSum [nClass]float64
 	var classN [nClass]int
 	var classDowSum [nClass][nDOW]float64
@@ -95,12 +116,17 @@ func FitSeasonalBaseline(s timeseries.Series[float64], season Seasonality, cal *
 		local := t.In(zoneFor(cal, t))
 		class := cal.Classify(t)
 		hour := local.Hour()
+		slot := seasonSlot(season, local)
 		dow := local.Weekday()
-		key := seasonKey(season, class, hour, dow)
+		key := seasonKey(season, class, slot, dow)
 		sum[key] += v
 		count[key]++
 		classHourSum[class][hour] += v
 		classHourN[class][hour]++
+		if season == SeasonMinuteOfWeek {
+			classMinuteSum[class][slot] += v
+			classMinuteN[class][slot]++
+		}
 		classSum[class] += v
 		classN[class]++
 		classDowSum[class][dow] += v
@@ -110,7 +136,7 @@ func FitSeasonalBaseline(s timeseries.Series[float64], season Seasonality, cal *
 	}
 
 	overall := overallSum / float64(overallN)
-	means := fillBaselineMeans(season, sum, count, classHourSum, classHourN, classSum, classN, classDowSum, classDowN, overall)
+	means := fillBaselineMeans(season, sum, count, classHourSum, classHourN, classMinuteSum, classMinuteN, classSum, classN, classDowSum, classDowN, overall)
 
 	last := p.last()
 	step := p.step
@@ -120,7 +146,7 @@ func FitSeasonalBaseline(s timeseries.Series[float64], season Seasonality, cal *
 		at: func(k int) float64 {
 			t := last.Add(time.Duration(k) * step)
 			local := t.In(zoneFor(cal, t))
-			key := seasonKey(season, cal.Classify(t), local.Hour(), local.Weekday())
+			key := seasonKey(season, cal.Classify(t), seasonSlot(season, local), local.Weekday())
 			return means[key]
 		},
 	}, nil
@@ -132,6 +158,8 @@ func fillBaselineMeans(
 	count []int,
 	classHourSum [nClass][nHour]float64,
 	classHourN [nClass][nHour]int,
+	classMinuteSum [nClass][nMinute]float64,
+	classMinuteN [nClass][nMinute]int,
 	classSum [nClass]float64,
 	classN [nClass]int,
 	classDowSum [nClass][nDOW]float64,
@@ -146,6 +174,13 @@ func fillBaselineMeans(
 		}
 		return classHourSum[class][hour] / float64(n), true
 	}
+	minuteMean := func(class DayClass, minute int) (float64, bool) {
+		n := classMinuteN[class][minute]
+		if n == 0 {
+			return 0, false
+		}
+		return classMinuteSum[class][minute] / float64(n), true
+	}
 	classMean := func(class DayClass) (float64, bool) {
 		n := classN[class]
 		if n == 0 {
@@ -153,21 +188,27 @@ func fillBaselineMeans(
 		}
 		return classSum[class] / float64(n), true
 	}
-	fallbackHour := func(class DayClass, hour int) float64 {
+	fallbackBySlot := func(slotMean func(DayClass, int) (float64, bool), class DayClass, slot int) float64 {
 		if class == ClassHoliday {
-			if v, ok := hourMean(ClassWeekend, hour); ok {
+			if v, ok := slotMean(ClassWeekend, slot); ok {
 				return v
 			}
 		}
 		if class == ClassHoliday || class == ClassWeekend {
-			if v, ok := hourMean(ClassWorkday, hour); ok {
+			if v, ok := slotMean(ClassWorkday, slot); ok {
 				return v
 			}
 		}
-		if v, ok := hourMean(class, hour); ok {
+		if v, ok := slotMean(class, slot); ok {
 			return v
 		}
 		return overall
+	}
+	fallbackHour := func(class DayClass, hour int) float64 {
+		return fallbackBySlot(hourMean, class, hour)
+	}
+	fallbackMinute := func(class DayClass, minute int) float64 {
+		return fallbackBySlot(minuteMean, class, minute)
 	}
 	fallbackClass := func(class DayClass) float64 {
 		if class == ClassHoliday {
@@ -216,26 +257,9 @@ func fillBaselineMeans(
 			means[nDOW] = fallbackClass(ClassHoliday)
 		}
 	case SeasonHourOfWeek:
-		for class := ClassWorkday; class <= ClassHoliday; class++ {
-			for dow := 0; dow < nDOW; dow++ {
-				for hour := 0; hour < nHour; hour++ {
-					key := int(class)*nDOW*nHour + dow*nHour + hour
-					if count[key] > 0 {
-						means[key] = sum[key] / float64(count[key])
-						continue
-					}
-					if n := classDowN[class][dow]; n > 0 {
-						means[key] = classDowSum[class][dow] / float64(n)
-						continue
-					}
-					if class == ClassHoliday {
-						means[key] = fallbackHour(ClassHoliday, hour)
-						continue
-					}
-					means[key] = overall
-				}
-			}
-		}
+		fillWeekSlots(means, count, sum, classDowSum, classDowN, nHour, fallbackHour, overall)
+	case SeasonMinuteOfWeek:
+		fillWeekSlots(means, count, sum, classDowSum, classDowN, nMinute, fallbackMinute, overall)
 	}
 	if math.IsNaN(overall) {
 		for i := range means {
@@ -243,4 +267,36 @@ func fillBaselineMeans(
 		}
 	}
 	return means
+}
+
+func fillWeekSlots(
+	means []float64,
+	count []int,
+	sum []float64,
+	classDowSum [nClass][nDOW]float64,
+	classDowN [nClass][nDOW]int,
+	nSlot int,
+	fallback func(DayClass, int) float64,
+	overall float64,
+) {
+	for class := ClassWorkday; class <= ClassHoliday; class++ {
+		for dow := 0; dow < nDOW; dow++ {
+			for slot := 0; slot < nSlot; slot++ {
+				key := int(class)*nDOW*nSlot + dow*nSlot + slot
+				if count[key] > 0 {
+					means[key] = sum[key] / float64(count[key])
+					continue
+				}
+				if n := classDowN[class][dow]; n > 0 {
+					means[key] = classDowSum[class][dow] / float64(n)
+					continue
+				}
+				if class == ClassHoliday {
+					means[key] = fallback(ClassHoliday, slot)
+					continue
+				}
+				means[key] = overall
+			}
+		}
+	}
 }

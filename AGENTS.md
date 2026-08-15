@@ -29,7 +29,7 @@ This repo is one root of the Cursor workspace `timeseries-workspace.code-workspa
 
 ## v1 in scope
 
-Naive, mean, drift, seasonal naive, seasonal baseline (hour/day/hour-of-week), SES, Holt; optional RU production calendar (default off); holdout evaluate; MAE/RMSE/MAPE.
+Naive, mean, drift, seasonal naive, seasonal baseline (hour/day/hour-of-week/minute-of-week), SES, Holt; optional RU production calendar (default off); holdout evaluate; MAE/RMSE/MAPE.
 
 ## v1 out of scope
 

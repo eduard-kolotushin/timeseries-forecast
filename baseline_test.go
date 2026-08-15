@@ -266,6 +266,162 @@ func TestSeasonalBaselineHourOfWeekCalendarSplitsWeekendAndHoliday(t *testing.T)
 	}
 }
 
+func TestSeasonalBaselineMinuteOfWeek(t *testing.T) {
+	t.Parallel()
+	start := time.Date(2026, 1, 12, 0, 0, 0, 0, time.UTC) // Monday
+	n := nMinute * 7
+	times := make([]time.Time, n)
+	values := make([]float64, n)
+	for i := range n {
+		t0 := start.Add(time.Duration(i) * time.Minute)
+		times[i] = t0
+		values[i] = float64(int(t0.Weekday())*10000 + t0.Hour()*nHourMinutes + t0.Minute())
+	}
+	m, err := FitSeasonalBaseline(mustSeries(times, values), SeasonMinuteOfWeek, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fc, err := m.Forecast(nMinute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// last Sunday 23:59, k=1 Monday 00:00 → 1*10000+0 = 10000
+	if fc.Values()[0] != 10000 {
+		t.Fatalf("minute-of-week monday 00:00 got %v", fc.Values()[0])
+	}
+	monday1005 := 10*nHourMinutes + 5
+	if fc.Values()[monday1005] != 10000+float64(monday1005) {
+		t.Fatalf("minute-of-week monday 10:05 got %v", fc.Values()[monday1005])
+	}
+	if fc.Values()[monday1005] == fc.Values()[monday1005+1] {
+		t.Fatal("monday 10:05 must differ from 10:06")
+	}
+}
+
+func TestSeasonalBaselineMinuteOfWeekDoesNotCopySaturdayOntoSunday(t *testing.T) {
+	t.Parallel()
+	start := time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC) // Saturday
+	times := make([]time.Time, nMinute)
+	values := make([]float64, nMinute)
+	var sum float64
+	for i := range nMinute {
+		times[i] = start.Add(time.Duration(i) * time.Minute)
+		values[i] = float64(i)
+		sum += float64(i)
+	}
+	overall := sum / float64(nMinute)
+	m, err := FitSeasonalBaseline(mustSeries(times, values), SeasonMinuteOfWeek, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fc, err := m.Forecast(nMinute + 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Last is Saturday 23:59. k=1..1440 are Sunday 00:00..23:59.
+	for i := range nMinute {
+		if fc.Values()[i] != overall {
+			t.Fatalf("Sunday minute %d got %v want overall %v (must not copy Saturday)", i, fc.Values()[i], overall)
+		}
+	}
+	if fc.Values()[nMinute] != overall {
+		t.Fatalf("Monday 00:00 got %v want overall %v", fc.Values()[nMinute], overall)
+	}
+}
+
+func TestSeasonalBaselineMinuteOfWeekEmptyMinuteUsesSameWeekdayMean(t *testing.T) {
+	t.Parallel()
+	sat := time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC)
+	times := make([]time.Time, 0, 27)
+	values := make([]float64, 0, 27)
+	for h := range 24 {
+		times = append(times, sat.Add(time.Duration(h)*time.Hour))
+		values = append(values, 100+float64(h))
+	}
+	sun := sat.Add(24 * time.Hour)
+	times = append(times, sun, sun.Add(time.Minute), sun.Add(2*time.Minute))
+	values = append(values, 5, 6, 7)
+	sundayMean := 6.0
+	m, err := FitSeasonalBaseline(mustSeries(times, values), SeasonMinuteOfWeek, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fc, err := m.Forecast(nMinute - 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Last is Sunday 00:02. k=1 is Sunday 00:03 — empty Sunday minute, not Saturday 00:03.
+	if fc.Values()[0] != sundayMean {
+		t.Fatalf("Sunday 00:03 got %v want Sunday mean %v", fc.Values()[0], sundayMean)
+	}
+	if fc.Values()[nMinute-4] != sundayMean {
+		t.Fatalf("Sunday 23:59 got %v want Sunday mean %v", fc.Values()[nMinute-4], sundayMean)
+	}
+	var overallSum float64
+	for _, v := range values {
+		overallSum += v
+	}
+	overall := overallSum / float64(len(values))
+	if fc.Values()[nMinute-3] != overall {
+		t.Fatalf("Monday 00:00 got %v want overall %v", fc.Values()[nMinute-3], overall)
+	}
+}
+
+func TestSeasonalBaselineMinuteOfWeekCalendarSplitsWeekendAndHoliday(t *testing.T) {
+	t.Parallel()
+	cal, err := ParseProductionCalendar([]byte("2026;10;;;;;;;;;;;;\n"), time.UTC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sat := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
+	workSat := time.Date(2026, 1, 17, 12, 0, 0, 0, time.UTC)
+	s := mustSeries([]time.Time{sat, workSat}, []float64{10, 50})
+
+	off, err := FitSeasonalBaseline(s, SeasonMinuteOfWeek, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fcOff, err := off.Forecast(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fcOff.Values()[0] != 30 {
+		t.Fatalf("calendar off Saturday mean got %v want 30", fcOff.Values()[0])
+	}
+
+	on, err := FitSeasonalBaseline(s, SeasonMinuteOfWeek, cal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fcOn, err := on.Forecast(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fcOn.Values()[0] != 50 {
+		t.Fatalf("working Saturday got %v want 50 (must not mix weekend Saturday)", fcOn.Values()[0])
+	}
+
+	ru, err := CalendarRU()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hol := mustSeries(
+		[]time.Time{mskDate(2026, 1, 1, 12), mskDate(2026, 1, 8, 12), mskDate(2026, 1, 15, 12)},
+		[]float64{100, 100, 20},
+	)
+	m, err := FitSeasonalBaseline(hol, SeasonMinuteOfWeek, ru)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fc, err := m.Forecast(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fc.Values()[0] != 20 {
+		t.Fatalf("workday Thursday got %v want 20 (holiday Thursday must not leak)", fc.Values()[0])
+	}
+}
+
 func TestSeasonalBaselineUncoveredYearMatchesCalendarOff(t *testing.T) {
 	t.Parallel()
 	// 2015-09-12 is Saturday and is not in the RU file. RU must not shift hours to Moscow.
