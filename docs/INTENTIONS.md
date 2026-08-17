@@ -14,7 +14,7 @@ Implement models in an **optimized** way: one pass to fit, O(1) work per horizon
 | Module path | `github.com/eduard-kolotushin/timeseries-forecast` |
 | Package name | `forecast` |
 | Go version | 1.26+ |
-| Core series library | sibling `github.com/eduard-kolotushin/timeseries` |
+| Core series library | `github.com/eduard-kolotushin/timeseries` (tagged module; no `replace`) |
 | Horizon clock | last timestamp + `k * step` |
 | Calendars | Optional, file-embedded production calendars in this package (RU first); default off. Not a Series concern. |
 
@@ -56,3 +56,4 @@ Do not add these without first updating this document:
 - Horizon must be positive
 - Smoothing parameters in `(0, 1]`
 - Table-driven tests for each model and for metrics
+- GitHub Actions on `main` runs `gofmt` and `go test ./...`

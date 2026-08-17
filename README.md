@@ -10,10 +10,6 @@ This repo is a sibling of the core timeseries library. Grafana visualization liv
 
 See [docs/INTENTIONS.md](docs/INTENTIONS.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## Local sibling
-
-`go.mod` replaces the core module with `../timeseries` while both live side by side.
-
 ```bash
 go test ./...
 ```

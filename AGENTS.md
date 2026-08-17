@@ -9,7 +9,7 @@ Univariate forecasting on top of `github.com/eduard-kolotushin/timeseries`.
 - **Module:** `github.com/eduard-kolotushin/timeseries-forecast`
 - **Package:** `forecast`
 - **Go:** 1.26+
-- **Local sibling:** `../timeseries` via `go.mod` replace
+- **Series library:** `github.com/eduard-kolotushin/timeseries` (tagged module; no `replace`)
 
 ## Read first
 
@@ -38,5 +38,6 @@ ARIMA/SARIMA, Prophet, ML models, multivariate, prediction intervals, series I/O
 ## Workflow
 
 - Table-driven tests next to the code under test
-- Use a `replace` directive for the local timeseries module while developing
+- Depend on a tagged `timeseries` module; do not add a `replace` directive
 - Do not copy Series internals; use the public timeseries API only
+- GitHub Actions on `main`: `gofmt` and `go test ./...`
