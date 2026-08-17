@@ -55,6 +55,17 @@ func BenchmarkForecastNaive(b *testing.B) {
 	}
 }
 
+func BenchmarkForecastIntervalNaive(b *testing.B) {
+	m, err := FitNaive(benchSeries(1_000))
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ResetTimer()
+	for b.Loop() {
+		_, _, _ = m.ForecastInterval(64, 0.95)
+	}
+}
+
 func BenchmarkFitSeasonalBaseline(b *testing.B) {
 	s := benchSeries(10_000)
 	b.ResetTimer()

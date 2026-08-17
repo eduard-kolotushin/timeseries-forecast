@@ -27,7 +27,14 @@ Implement models in an **optimized** way: one pass to fit, O(1) work per horizon
 - Holdout evaluation
 - Metrics: MAE, RMSE, MAPE
 
-## v1 non-goals
+## v2 must-have
+
+- Prediction intervals for every v1 model (`Fitted.ForecastInterval(h, level)`)
+- Gaussian two-sided bands from 1-step residual σ and Hyndman horizon widening
+- σ is a scalar (or per-bucket for seasonal baseline); do not keep the residual vector
+- Coverage `level` in `(0, 1)`; undefined bounds are `math.NaN()`
+
+## v1/v2 non-goals
 
 Do not add these without first updating this document:
 
@@ -35,7 +42,7 @@ Do not add these without first updating this document:
 - Prophet-style decompositions
 - Machine learning / neural forecasters
 - Multivariate / panel models
-- Prediction intervals / quantile forecasts
+- Quantile forecasts, bootstrap, or conformal intervals
 - CSV/JSON I/O for series, or plotting (visualization lives in sibling `timeseries-grafana`)
 - Business calendars in the core `timeseries` library
 - Duplicating Series ops that belong in `timeseries`
@@ -54,6 +61,7 @@ Do not add these without first updating this document:
 - Fit does not mutate the input series
 - Empty or all-NaN series fail with a sentinel error
 - Horizon must be positive
+- Interval coverage `level` in `(0, 1)`
 - Smoothing parameters in `(0, 1]`
-- Table-driven tests for each model and for metrics
+- Table-driven tests for each model, metrics, and interval golden paths
 - GitHub Actions on `main` runs `gofmt` and `go test ./...`

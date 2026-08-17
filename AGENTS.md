@@ -24,16 +24,20 @@ This repo is one root of the Cursor workspace `timeseries-workspace.code-workspa
 - Public ops do not mutate caller series
 - Future timestamps: last time + `k*step` for horizon `k=1..h` (step inferred from the last interval unless given)
 - Missing values: DropNA before fit; `math.NaN()` in outputs where undefined
-- Stay within v1 scope unless `docs/INTENTIONS.md` is updated first
+- Stay within v1/v2 scope unless `docs/INTENTIONS.md` is updated first
 - Implement fits in linear time; O(1) work per horizon step; pre-size forecast slices
 
 ## v1 in scope
 
 Naive, mean, drift, seasonal naive, seasonal baseline (hour/day/hour-of-week/minute-of-week), SES, Holt; optional RU production calendar (default off); holdout evaluate; MAE/RMSE/MAPE.
 
-## v1 out of scope
+## v2 in scope
 
-ARIMA/SARIMA, Prophet, ML models, multivariate, prediction intervals, series I/O, plotting (see sibling `timeseries-grafana`). Business calendars belong here, not in `timeseries`.
+Gaussian prediction intervals (`ForecastInterval`) for every v1 model.
+
+## v1/v2 out of scope
+
+ARIMA/SARIMA, Prophet, ML models, multivariate, quantile/bootstrap intervals, series I/O, plotting (see sibling `timeseries-grafana`). Business calendars belong here, not in `timeseries`.
 
 ## Workflow
 

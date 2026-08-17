@@ -7,14 +7,14 @@ alwaysApply: true
 
 Read [docs/INTENTIONS.md](docs/INTENTIONS.md) before expanding scope.
 
-## Stay in v1
+## Stay in v1/v2
 
-Allowed: naive/mean/drift/seasonal naive, seasonal baseline, SES, Holt, optional production calendars (RU, default off), holdout evaluate, MAE/RMSE/MAPE.
+Allowed: naive/mean/drift/seasonal naive, seasonal baseline, SES, Holt, optional production calendars (RU, default off), holdout evaluate, MAE/RMSE/MAPE, Gaussian prediction intervals.
 
 Do **not** add without updating INTENTIONS first:
 
 - ARIMA, Prophet, ML models
-- Prediction intervals
+- Quantile, bootstrap, or conformal intervals
 - Multivariate forecasts
 - I/O or plotting (sibling `timeseries-grafana`)
 - A forked Series type

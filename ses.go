@@ -1,6 +1,10 @@
 package forecast
 
-import "github.com/eduard-kolotushin/timeseries"
+import (
+	"math"
+
+	"github.com/eduard-kolotushin/timeseries"
+)
 
 func validSmooth(x float64) bool {
 	return x > 0 && x <= 1
@@ -21,8 +25,22 @@ func FitSES(s timeseries.Series[float64], alpha float64) (Fitted, error) {
 	}
 	level := p.values[0]
 	oneMinus := 1 - alpha
+	var sse float64
+	nResid := 0
 	for i := 1; i < len(p.values); i++ {
+		r := p.values[i] - level
+		sse += r * r
+		nResid++
 		level = alpha*p.values[i] + oneMinus*level
 	}
-	return pointForecast{lastTime: p.last(), step: p.step, at: func(int) float64 { return level }}, nil
+	sigma := mleSigma(sse, nResid)
+	a2 := alpha * alpha
+	return pointForecast{
+		lastTime: p.last(),
+		step:     p.step,
+		at:       func(int) float64 { return level },
+		se: scaledSE(sigma, func(k int) float64 {
+			return math.Sqrt(1 + a2*float64(k-1))
+		}),
+	}, nil
 }

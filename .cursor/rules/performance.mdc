@@ -9,12 +9,12 @@ This package must be fast as well as correct. Optimize **computation**: work per
 
 ## Do
 
-- Fit in one **O(n)** pass over training values (SES, Holt, mean, drift, seasonal baseline)
-- Reduce the fitted model to the state `Forecast` needs (last, step, level/trend, season, means); do not keep the full series
-- Fill the horizon in one **O(h)** loop; `at(k)` must be O(1)
+- Fit in one **O(n)** pass over training values (SES, Holt, mean, drift, naive σ, seasonal baseline)
+- Reduce the fitted model to the state `Forecast` needs (last, step, level/trend, season, means, σ or per-bucket se); do not keep the full series or residual vector
+- Fill the horizon in one **O(h)** loop; `at(k)` and `se(k)` must be O(1)
 - Copy `Times()` / `Values()` once in `prepare`; compute on those slices
 - Score metrics in one pass over aligned values
-- Add or update `bench_test.go` when changing a fit or `Forecast` hot path
+- Add or update `bench_test.go` when changing a fit, `Forecast`, or `ForecastInterval` hot path
 
 ## Do not
 

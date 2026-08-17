@@ -17,6 +17,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 - Fit functions return `Fitted`
 - `Forecast(h)` returns a new `timeseries.Series[float64]`
+- `ForecastInterval(h, level)` returns lower and upper series
 - Do not mutate caller series
 - Pre-size forecast slices to `h`
 

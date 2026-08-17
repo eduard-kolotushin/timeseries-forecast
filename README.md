@@ -47,6 +47,11 @@ func main() {
 		panic(err)
 	}
 	fmt.Println(fc.Values())
+	lo, hi, err := model.ForecastInterval(3, 0.95)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(lo.Values(), hi.Values())
 }
 ```
 
@@ -63,6 +68,8 @@ func main() {
 | `FitHolt` | level + k × trend |
 
 Future times are `last + k*step` for `k = 1..h`, with `step` taken from the last two observations.
+
+`ForecastInterval(h, level)` returns Gaussian lower/upper series at coverage `level` in `(0, 1)`.
 
 ## Agents
 

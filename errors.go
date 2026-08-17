@@ -29,4 +29,7 @@ var (
 
 	// ErrSplit is returned when a train/test split size is invalid.
 	ErrSplit = errors.New("forecast: invalid train/test split")
+
+	// ErrInvalidLevel is returned when interval coverage is not in (0, 1).
+	ErrInvalidLevel = errors.New("forecast: interval level must be in (0, 1)")
 )
