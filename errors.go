@@ -32,4 +32,10 @@ var (
 
 	// ErrInvalidLevel is returned when interval coverage is not in (0, 1).
 	ErrInvalidLevel = errors.New("forecast: interval level must be in (0, 1)")
+
+	// ErrRange is returned when the forecast window is inverted (from after to).
+	ErrRange = errors.New("forecast: forecast range is inverted")
+
+	// ErrEmptyRange is returned when [from, to] contains no last+k×step grid point.
+	ErrEmptyRange = errors.New("forecast: no forecast points in the requested range")
 )

@@ -67,7 +67,7 @@ func main() {
 | `FitSES` | constant smoothed level |
 | `FitHolt` | level + k × trend |
 
-Future times are `last + k*step` for `k = 1..h`, with `step` taken from the last two observations.
+Future times are `last + k*step` for `k ≥ 1`, with `step` taken from the last two observations. `Forecast(h)` uses `k = 1..h`. `ForecastRange(from, to)` keeps grid points in `[from, to]`.
 
 `ForecastInterval(h, level)` returns Gaussian lower/upper series at coverage `level` in `(0, 1)`.
 

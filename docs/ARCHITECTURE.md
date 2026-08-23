@@ -23,6 +23,8 @@ Single package `forecast`:
 type Fitted interface {
     Forecast(h int) (timeseries.Series[float64], error)
     ForecastInterval(h int, level float64) (timeseries.Series[float64], timeseries.Series[float64], error)
+    ForecastRange(from, to time.Time) (timeseries.Series[float64], error)
+    ForecastIntervalRange(from, to time.Time, level float64) (timeseries.Series[float64], timeseries.Series[float64], error)
 }
 
 func FitNaive(s timeseries.Series[float64]) (Fitted, error)
@@ -41,6 +43,8 @@ Callers use the public `timeseries` API only (`Times`, `Values`, `New`, `DropNA`
 ## Horizon
 
 Forecast `h` is the number of future points. Timestamps are `last.Add(k*step)` for `k=1..h`. `step` is `times[n-1]-times[n-2]` after DropNA.
+
+`ForecastRange(from, to)` uses the same grid. It finds the first `k≥1` with `t_k ≥ from` in O(1) (`k = ceil((from-last)/step)`, then `k = max(1, k)`), the last `k` with `t_k ≤ to`, and fills only that slice. `Forecast(h)` is the range `(last+step) .. (last+h×step)`. An inverted range or a window with no grid point returns `ErrRange` / `ErrEmptyRange`.
 
 ## Prediction intervals
 
@@ -64,8 +68,8 @@ Optimize computation first: work per observation at fit, work per horizon step a
 - Fit is one O(n) pass (SES, Holt, mean, drift, naive σ, seasonal baseline including `sumsq`)
 - Seasonal baseline keeps a pre-sized means table filled at fit. Hour/day: holiday → weekend → workday → overall. Hour-of-week: (class, weekday, hour), else that class+weekday mean, else overall. Minute-of-week: (class, weekday, minute of day), else that class+weekday mean, else overall. Sunday does not copy Saturday; working Saturday is not weekend Saturday; holidays fall back by hour or minute of day
 - Fitted models keep only forecast state (level/trend/season/last/means/σ or per-bucket se), not the training series
-- `Forecast` and `ForecastInterval` are each one O(h) loop; `at(k)` and `se(k)` are O(1)
-- Forecast allocates exactly `h` times and `h` values; intervals allocate two series of length `h`
+- `Forecast`, `ForecastInterval`, `ForecastRange`, and `ForecastIntervalRange` each fill one O(h) loop over emitted points; `at(k)` and `se(k)` are O(1)
+- Forecast allocates exactly the emitted length; intervals allocate two series of that length
 - Do not clone the training series unless a public helper needs an independent copy
 
 ## Testing

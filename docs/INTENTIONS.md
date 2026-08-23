@@ -15,7 +15,7 @@ Implement models in an **optimized** way: one pass to fit, O(1) work per horizon
 | Package name | `forecast` |
 | Go version | 1.26+ |
 | Core series library | `github.com/eduard-kolotushin/timeseries` (tagged module; no `replace`) |
-| Horizon clock | last timestamp + `k * step` |
+| Horizon clock | last timestamp + `k * step` for `k ≥ 1`. `Forecast(h)` emits `k = 1..h`. `ForecastRange(from, to)` emits grid points with `from ≤ t ≤ to` (skip earlier `k`; no backcast before `last+step`; no off-grid times). |
 | Calendars | Optional, file-embedded production calendars in this package (RU first); default off. Not a Series concern. |
 
 ## v1 must-have
@@ -34,7 +34,13 @@ Implement models in an **optimized** way: one pass to fit, O(1) work per horizon
 - σ is a scalar (or per-bucket for seasonal baseline); do not keep the residual vector
 - Coverage `level` in `(0, 1)`; undefined bounds are `math.NaN()`
 
-## v1/v2 non-goals
+## v3 must-have
+
+- `Fitted.ForecastRange(from, to)` and `ForecastIntervalRange(from, to, level)`: emit the `last+k×step` grid inside `[from, to]`
+- Skip to the first `k ≥ 1` with `t ≥ from` in O(1); fill only window points (O(h_window), not a walk of skipped `k`)
+- Empty window (inverted range, shorter than `step`, or entirely before `last+step`) fails with a sentinel error
+
+## v1/v2/v3 non-goals
 
 Do not add these without first updating this document:
 
@@ -61,6 +67,7 @@ Do not add these without first updating this document:
 - Fit does not mutate the input series
 - Empty or all-NaN series fail with a sentinel error
 - Horizon must be positive
+- Forecast range must contain at least one grid point (`last+k×step`)
 - Interval coverage `level` in `(0, 1)`
 - Smoothing parameters in `(0, 1]`
 - Table-driven tests for each model, metrics, and interval golden paths

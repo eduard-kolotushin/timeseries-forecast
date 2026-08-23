@@ -144,6 +144,70 @@ func TestForecastHorizon(t *testing.T) {
 	}
 }
 
+func TestForecastRange(t *testing.T) {
+	t.Parallel()
+	naive, err := FitNaive(series(1, 2, 3, 4))
+	if err != nil {
+		t.Fatal(err)
+	}
+	full, err := naive.Forecast(3)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := naive.ForecastRange(tAt(4), tAt(6))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Len() != 3 || !got.Times()[0].Equal(tAt(4)) || !got.Times()[2].Equal(tAt(6)) {
+		t.Fatalf("full window times: %v", got.Times())
+	}
+	if got.Values()[0] != full.Values()[0] || got.Values()[2] != full.Values()[2] {
+		t.Fatalf("full window values: %v vs %v", got.Values(), full.Values())
+	}
+
+	skip, err := naive.ForecastRange(tAt(6), tAt(8))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skip.Len() != 3 || !skip.Times()[0].Equal(tAt(6)) || skip.Values()[0] != 4 {
+		t.Fatalf("skip-ahead: times=%v values=%v", skip.Times(), skip.Values())
+	}
+
+	one, err := naive.ForecastRange(tAt(5), tAt(5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if one.Len() != 1 || !one.Times()[0].Equal(tAt(5)) {
+		t.Fatalf("point window: %v", one.Times())
+	}
+
+	if _, err := naive.ForecastRange(tAt(6), tAt(5)); err != ErrRange {
+		t.Fatalf("inverted: %v", err)
+	}
+	if _, err := naive.ForecastRange(tAt(0), tAt(3)); err != ErrEmptyRange {
+		t.Fatalf("backcast: %v", err)
+	}
+	if _, err := naive.ForecastRange(tAt(4).Add(500*time.Millisecond), tAt(4).Add(500*time.Millisecond)); err != ErrEmptyRange {
+		t.Fatalf("off-grid: %v", err)
+	}
+
+	holt, err := FitHolt(series(1, 2, 3, 4), 1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hSkip, err := holt.ForecastRange(tAt(5), tAt(6))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hSkip.Len() != 2 || hSkip.Values()[0] != 6 || hSkip.Values()[1] != 7 {
+		t.Fatalf("holt skip: %v", hSkip.Values())
+	}
+	if _, _, err := holt.ForecastIntervalRange(tAt(5), tAt(6), 0.95); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCompareAndEvaluate(t *testing.T) {
 	t.Parallel()
 	actual := series(1, 2, 3, 4)

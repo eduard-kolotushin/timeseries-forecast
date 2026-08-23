@@ -11,6 +11,8 @@ import (
 type Fitted interface {
 	Forecast(h int) (timeseries.Series[float64], error)
 	ForecastInterval(h int, level float64) (timeseries.Series[float64], timeseries.Series[float64], error)
+	ForecastRange(from, to time.Time) (timeseries.Series[float64], error)
+	ForecastIntervalRange(from, to time.Time, level float64) (timeseries.Series[float64], timeseries.Series[float64], error)
 }
 
 type pointForecast struct {
@@ -27,48 +29,68 @@ func (f pointForecast) Forecast(h int) (timeseries.Series[float64], error) {
 	if f.step <= 0 {
 		return timeseries.Series[float64]{}, ErrNoFrequency
 	}
-	times := make([]time.Time, h)
-	values := make([]float64, h)
-	t := f.lastTime
-	for k := 1; k <= h; k++ {
-		t = t.Add(f.step)
-		times[k-1] = t
-		values[k-1] = f.at(k)
-	}
-	return timeseries.New(times, values)
+	from := f.lastTime.Add(f.step)
+	to := f.lastTime.Add(time.Duration(h) * f.step)
+	return f.ForecastRange(from, to)
 }
 
 func (f pointForecast) ForecastInterval(h int, level float64) (timeseries.Series[float64], timeseries.Series[float64], error) {
-	z, err := intervalZ(level)
-	if err != nil {
-		return timeseries.Series[float64]{}, timeseries.Series[float64]{}, err
-	}
 	if h <= 0 {
 		return timeseries.Series[float64]{}, timeseries.Series[float64]{}, ErrHorizon
 	}
 	if f.step <= 0 {
 		return timeseries.Series[float64]{}, timeseries.Series[float64]{}, ErrNoFrequency
 	}
+	from := f.lastTime.Add(f.step)
+	to := f.lastTime.Add(time.Duration(h) * f.step)
+	return f.ForecastIntervalRange(from, to, level)
+}
+
+func (f pointForecast) ForecastRange(from, to time.Time) (timeseries.Series[float64], error) {
+	k0, k1, err := f.windowK(from, to)
+	if err != nil {
+		return timeseries.Series[float64]{}, err
+	}
+	n := k1 - k0 + 1
+	times := make([]time.Time, n)
+	values := make([]float64, n)
+	for i := 0; i < n; i++ {
+		k := k0 + i
+		times[i] = f.lastTime.Add(time.Duration(k) * f.step)
+		values[i] = f.at(k)
+	}
+	return timeseries.New(times, values)
+}
+
+func (f pointForecast) ForecastIntervalRange(from, to time.Time, level float64) (timeseries.Series[float64], timeseries.Series[float64], error) {
+	z, err := intervalZ(level)
+	if err != nil {
+		return timeseries.Series[float64]{}, timeseries.Series[float64]{}, err
+	}
+	k0, k1, err := f.windowK(from, to)
+	if err != nil {
+		return timeseries.Series[float64]{}, timeseries.Series[float64]{}, err
+	}
 	se := f.se
 	if se == nil {
 		se = nanSE
 	}
-	times := make([]time.Time, h)
-	lo := make([]float64, h)
-	hi := make([]float64, h)
-	t := f.lastTime
-	for k := 1; k <= h; k++ {
-		t = t.Add(f.step)
-		times[k-1] = t
+	n := k1 - k0 + 1
+	times := make([]time.Time, n)
+	lo := make([]float64, n)
+	hi := make([]float64, n)
+	for i := 0; i < n; i++ {
+		k := k0 + i
+		times[i] = f.lastTime.Add(time.Duration(k) * f.step)
 		pt := f.at(k)
 		s := se(k)
 		if math.IsNaN(s) {
-			lo[k-1] = math.NaN()
-			hi[k-1] = math.NaN()
+			lo[i] = math.NaN()
+			hi[i] = math.NaN()
 			continue
 		}
-		lo[k-1] = pt - z*s
-		hi[k-1] = pt + z*s
+		lo[i] = pt - z*s
+		hi[i] = pt + z*s
 	}
 	lower, err := timeseries.New(times, lo)
 	if err != nil {
@@ -79,6 +101,35 @@ func (f pointForecast) ForecastInterval(h int, level float64) (timeseries.Series
 		return timeseries.Series[float64]{}, timeseries.Series[float64]{}, err
 	}
 	return lower, upper, nil
+}
+
+// windowK returns inclusive 1-based k bounds for grid points in [from, to].
+func (f pointForecast) windowK(from, to time.Time) (int, int, error) {
+	if f.step <= 0 {
+		return 0, 0, ErrNoFrequency
+	}
+	if from.After(to) {
+		return 0, 0, ErrRange
+	}
+	k0 := int(ceilDuration(from.Sub(f.lastTime), f.step))
+	if k0 < 1 {
+		k0 = 1
+	}
+	k1 := int(to.Sub(f.lastTime) / f.step)
+	if k1 < k0 {
+		return 0, 0, ErrEmptyRange
+	}
+	return k0, k1, nil
+}
+
+func ceilDuration(num, den time.Duration) int64 {
+	if den <= 0 {
+		return 0
+	}
+	if num <= 0 {
+		return 0
+	}
+	return (int64(num) + int64(den) - 1) / int64(den)
 }
 
 func intervalZ(level float64) (float64, error) {

@@ -55,6 +55,20 @@ func BenchmarkForecastNaive(b *testing.B) {
 	}
 }
 
+func BenchmarkForecastRangeNaive(b *testing.B) {
+	m, err := FitNaive(benchSeries(1_000))
+	if err != nil {
+		b.Fatal(err)
+	}
+	last := time.Unix(999, 0).UTC()
+	from := last.Add(32 * time.Second)
+	to := last.Add(64 * time.Second)
+	b.ResetTimer()
+	for b.Loop() {
+		_, _ = m.ForecastRange(from, to)
+	}
+}
+
 func BenchmarkForecastIntervalNaive(b *testing.B) {
 	m, err := FitNaive(benchSeries(1_000))
 	if err != nil {
