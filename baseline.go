@@ -113,23 +113,14 @@ func FitSeasonalBaseline(s timeseries.Series[float64], season Seasonality, cal *
 	overall := agg.overallSum / float64(agg.overallN)
 	means, ses := fillBaselineMeans(season, agg, overall)
 
-	last := p.last()
-	step := p.step
 	return pointForecast{
-		lastTime: last,
-		step:     step,
-		at: func(k int) float64 {
-			t := last.Add(time.Duration(k) * step)
-			local := t.In(zoneFor(cal, t))
-			key := seasonKey(season, cal.Classify(t), seasonSlot(season, local), local.Weekday())
-			return means[key]
-		},
-		se: func(k int) float64 {
-			t := last.Add(time.Duration(k) * step)
-			local := t.In(zoneFor(cal, t))
-			key := seasonKey(season, cal.Classify(t), seasonSlot(season, local), local.Weekday())
-			return ses[key]
-		},
+		lastTime:    p.last(),
+		step:        p.step,
+		kind:        kindBaseline,
+		means:       means,
+		ses:         ses,
+		seasonality: season,
+		cal:         cal,
 	}, nil
 }
 

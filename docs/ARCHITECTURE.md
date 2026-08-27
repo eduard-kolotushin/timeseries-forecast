@@ -15,6 +15,7 @@ Single package `forecast`:
 | `holt.go` | Holt linear trend |
 | `metrics.go` | MAE, RMSE, MAPE |
 | `evaluate.go` | Train/test split and holdout evaluate |
+| `snapshot.go` | `Snapshot` envelope, `SnapshotOf` / `Restore` |
 | `errors.go` | Sentinel errors |
 
 ## API
@@ -34,6 +35,10 @@ func FitSeasonalNaive(s timeseries.Series[float64], period int) (Fitted, error)
 func FitSeasonalBaseline(s timeseries.Series[float64], season Seasonality, cal *Calendar) (Fitted, error)
 func FitSES(s timeseries.Series[float64], alpha float64) (Fitted, error)
 func FitHolt(s timeseries.Series[float64], alpha, beta float64) (Fitted, error)
+
+type Snapshot struct { V int; Kind string; Last, Step int64; Data json.RawMessage }
+func SnapshotOf(f Fitted) (Snapshot, error)
+func Restore(s Snapshot) (Fitted, error)
 ```
 
 `cal == nil` means calendar off (UTC, weekend = Sat/Sun). `CalendarByName("ru")` loads the embedded Russian production calendar (`Europe/Moscow`). A timestamp whose civil year is not in the file is classified as calendar off; holiday rules and the calendar timezone do not apply to other years.
@@ -67,7 +72,7 @@ Optimize computation first: work per observation at fit, work per horizon step a
 - Copy `Times()` / `Values()` once at fit; work on those slices
 - Fit is one O(n) pass (SES, Holt, mean, drift, naive σ, seasonal baseline including `sumsq`)
 - Seasonal baseline keeps a pre-sized means table filled at fit. Hour/day: holiday → weekend → workday → overall. Hour-of-week: (class, weekday, hour), else that class+weekday mean, else overall. Minute-of-week: (class, weekday, minute of day), else that class+weekday mean, else overall. Sunday does not copy Saturday; working Saturday is not weekend Saturday; holidays fall back by hour or minute of day
-- Fitted models keep only forecast state (level/trend/season/last/means/σ or per-bucket se), not the training series
+- Fitted models keep only forecast state (level/trend/season/last/means/σ or per-bucket se), not the training series. That state is what `SnapshotOf` encodes.
 - `Forecast`, `ForecastInterval`, `ForecastRange`, and `ForecastIntervalRange` each fill one O(h) loop over emitted points; `at(k)` and `se(k)` are O(1)
 - Forecast allocates exactly the emitted length; intervals allocate two series of that length
 - Do not clone the training series unless a public helper needs an independent copy

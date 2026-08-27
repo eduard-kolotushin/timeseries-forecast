@@ -18,8 +18,15 @@ type Fitted interface {
 type pointForecast struct {
 	lastTime time.Time
 	step     time.Duration
-	at       func(k int) float64 // k is 1-based horizon
-	se       func(k int) float64 // O(1) standard error; NaN if undefined
+	kind     string
+
+	last, mu, b, level, trend, sigma, alpha, beta float64
+	n, period                                     int
+
+	season      []float64
+	means, ses  []float64
+	seasonality Seasonality
+	cal         *Calendar
 }
 
 func (f pointForecast) Forecast(h int) (timeseries.Series[float64], error) {
@@ -71,10 +78,6 @@ func (f pointForecast) ForecastIntervalRange(from, to time.Time, level float64) 
 	if err != nil {
 		return timeseries.Series[float64]{}, timeseries.Series[float64]{}, err
 	}
-	se := f.se
-	if se == nil {
-		se = nanSE
-	}
 	n := k1 - k0 + 1
 	times := make([]time.Time, n)
 	lo := make([]float64, n)
@@ -83,7 +86,7 @@ func (f pointForecast) ForecastIntervalRange(from, to time.Time, level float64) 
 		k := k0 + i
 		times[i] = f.lastTime.Add(time.Duration(k) * f.step)
 		pt := f.at(k)
-		s := se(k)
+		s := f.se(k)
 		if math.IsNaN(s) {
 			lo[i] = math.NaN()
 			hi[i] = math.NaN()
@@ -146,14 +149,72 @@ func mleSigma(sse float64, nResid int) float64 {
 	return math.Sqrt(sse / float64(nResid))
 }
 
-func nanSE(int) float64 { return math.NaN() }
-
-func scaledSE(sigma float64, scale func(k int) float64) func(k int) float64 {
-	if math.IsNaN(sigma) {
-		return nanSE
+func (f pointForecast) at(k int) float64 {
+	switch f.kind {
+	case kindNaive:
+		return f.last
+	case kindMean:
+		return f.mu
+	case kindDrift:
+		return f.last + float64(k)*f.b
+	case kindSeasonal:
+		if f.period <= 0 || len(f.season) == 0 {
+			return math.NaN()
+		}
+		return f.season[(k-1)%f.period]
+	case kindBaseline:
+		t := f.lastTime.Add(time.Duration(k) * f.step)
+		local := t.In(zoneFor(f.cal, t))
+		key := seasonKey(f.seasonality, f.cal.Classify(t), seasonSlot(f.seasonality, local), local.Weekday())
+		if key < 0 || key >= len(f.means) {
+			return math.NaN()
+		}
+		return f.means[key]
+	case kindSES:
+		return f.level
+	case kindHolt:
+		return f.level + float64(k)*f.trend
+	default:
+		return math.NaN()
 	}
-	return func(k int) float64 {
-		return sigma * scale(k)
+}
+
+func (f pointForecast) se(k int) float64 {
+	if f.kind == kindBaseline {
+		t := f.lastTime.Add(time.Duration(k) * f.step)
+		local := t.In(zoneFor(f.cal, t))
+		key := seasonKey(f.seasonality, f.cal.Classify(t), seasonSlot(f.seasonality, local), local.Weekday())
+		if key < 0 || key >= len(f.ses) {
+			return math.NaN()
+		}
+		return f.ses[key]
+	}
+	if math.IsNaN(f.sigma) {
+		return math.NaN()
+	}
+	switch f.kind {
+	case kindNaive:
+		return f.sigma * math.Sqrt(float64(k))
+	case kindMean:
+		if f.n <= 0 {
+			return math.NaN()
+		}
+		return f.sigma * math.Sqrt(1+1/float64(f.n))
+	case kindDrift:
+		if f.n <= 0 {
+			return math.NaN()
+		}
+		h := float64(k)
+		return f.sigma * math.Sqrt(h*(1+h/float64(f.n)))
+	case kindSeasonal:
+		return f.sigma * math.Sqrt(float64((k-1)/f.period+1))
+	case kindSES:
+		return f.sigma * math.Sqrt(1+f.alpha*f.alpha*float64(k-1))
+	case kindHolt:
+		h := float64(k)
+		return f.sigma * math.Sqrt(1+(h-1)*(f.alpha*f.alpha+f.alpha*f.beta*h+h*(h-1)*f.beta*f.beta/6))
+	default:
+		return math.NaN()
 	}
 }
 

@@ -1,8 +1,6 @@
 package forecast
 
 import (
-	"math"
-
 	"github.com/eduard-kolotushin/timeseries"
 )
 
@@ -26,8 +24,9 @@ func FitNaive(s timeseries.Series[float64]) (Fitted, error) {
 	return pointForecast{
 		lastTime: p.last(),
 		step:     p.step,
-		at:       func(int) float64 { return last },
-		se:       scaledSE(sigma, func(k int) float64 { return math.Sqrt(float64(k)) }),
+		kind:     kindNaive,
+		last:     last,
+		sigma:    sigma,
 	}, nil
 }
 
@@ -53,12 +52,13 @@ func FitMean(s timeseries.Series[float64]) (Fitted, error) {
 		sse = 0
 	}
 	sigma := mleSigma(sse, n)
-	scale := math.Sqrt(1 + 1/nf)
 	return pointForecast{
 		lastTime: p.last(),
 		step:     p.step,
-		at:       func(int) float64 { return mu },
-		se:       scaledSE(sigma, func(int) float64 { return scale }),
+		kind:     kindMean,
+		mu:       mu,
+		sigma:    sigma,
+		n:        n,
 	}, nil
 }
 
@@ -80,14 +80,13 @@ func FitDrift(s timeseries.Series[float64]) (Fitted, error) {
 		sse += r * r
 	}
 	sigma := mleSigma(sse, n-1)
-	nf := float64(n)
 	return pointForecast{
 		lastTime: p.last(),
 		step:     p.step,
-		at:       func(k int) float64 { return last + float64(k)*b },
-		se: scaledSE(sigma, func(k int) float64 {
-			h := float64(k)
-			return math.Sqrt(h * (1 + h/nf))
-		}),
+		kind:     kindDrift,
+		last:     last,
+		b:        b,
+		sigma:    sigma,
+		n:        n,
 	}, nil
 }

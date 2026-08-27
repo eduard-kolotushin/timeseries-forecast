@@ -1,8 +1,6 @@
 package forecast
 
 import (
-	"math"
-
 	"github.com/eduard-kolotushin/timeseries"
 )
 
@@ -21,7 +19,8 @@ func FitSeasonalNaive(s timeseries.Series[float64], period int) (Fitted, error) 
 	if len(p.values) < period {
 		return nil, ErrTooShort
 	}
-	season := p.values[len(p.values)-period:]
+	season := make([]float64, period)
+	copy(season, p.values[len(p.values)-period:])
 	var sse float64
 	nResid := 0
 	for i := period; i < len(p.values); i++ {
@@ -30,15 +29,12 @@ func FitSeasonalNaive(s timeseries.Series[float64], period int) (Fitted, error) 
 		nResid++
 	}
 	sigma := mleSigma(sse, nResid)
-	m := period
 	return pointForecast{
 		lastTime: p.last(),
 		step:     p.step,
-		at: func(k int) float64 {
-			return season[(k-1)%period]
-		},
-		se: scaledSE(sigma, func(k int) float64 {
-			return math.Sqrt(float64((k-1)/m + 1))
-		}),
+		kind:     kindSeasonal,
+		season:   season,
+		period:   period,
+		sigma:    sigma,
 	}, nil
 }

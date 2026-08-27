@@ -7,9 +7,9 @@ alwaysApply: true
 
 Read [docs/INTENTIONS.md](docs/INTENTIONS.md) before expanding scope.
 
-## Stay in v1/v2/v3
+## Stay in v1/v2/v3/v4
 
-Allowed: naive/mean/drift/seasonal naive, seasonal baseline, SES, Holt, optional production calendars (RU, default off), holdout evaluate, MAE/RMSE/MAPE, Gaussian prediction intervals, `ForecastRange` / `ForecastIntervalRange` on the `last+k×step` grid.
+Allowed: naive/mean/drift/seasonal naive, seasonal baseline, SES, Holt, optional production calendars (RU, default off), holdout evaluate, MAE/RMSE/MAPE, Gaussian prediction intervals, `ForecastRange` / `ForecastIntervalRange` on the `last+k×step` grid, `SnapshotOf` / `Restore` of fitted state.
 
 Do **not** add without updating INTENTIONS first:
 

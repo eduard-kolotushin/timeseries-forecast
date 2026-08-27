@@ -1,8 +1,6 @@
 package forecast
 
 import (
-	"math"
-
 	"github.com/eduard-kolotushin/timeseries"
 )
 
@@ -34,13 +32,12 @@ func FitSES(s timeseries.Series[float64], alpha float64) (Fitted, error) {
 		level = alpha*p.values[i] + oneMinus*level
 	}
 	sigma := mleSigma(sse, nResid)
-	a2 := alpha * alpha
 	return pointForecast{
 		lastTime: p.last(),
 		step:     p.step,
-		at:       func(int) float64 { return level },
-		se: scaledSE(sigma, func(k int) float64 {
-			return math.Sqrt(1 + a2*float64(k-1))
-		}),
+		kind:     kindSES,
+		level:    level,
+		sigma:    sigma,
+		alpha:    alpha,
 	}, nil
 }

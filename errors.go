@@ -38,4 +38,10 @@ var (
 
 	// ErrEmptyRange is returned when [from, to] contains no last+k×step grid point.
 	ErrEmptyRange = errors.New("forecast: no forecast points in the requested range")
+
+	// ErrUnknownSnapshot is returned when Snapshot.Kind or Version is not supported.
+	ErrUnknownSnapshot = errors.New("forecast: unknown snapshot")
+
+	// ErrInvalidSnapshot is returned when snapshot payload is missing or inconsistent.
+	ErrInvalidSnapshot = errors.New("forecast: invalid snapshot")
 )

@@ -14,7 +14,7 @@ This package must be fast as well as correct. Optimize **computation**: work per
 - Fill the horizon or forecast window in one **O(h)** loop; `at(k)` and `se(k)` must be O(1); skip to the window start in O(1)
 - Copy `Times()` / `Values()` once in `prepare`; compute on those slices
 - Score metrics in one pass over aligned values
-- Add or update `bench_test.go` when changing a fit, `Forecast`, `ForecastInterval`, or `ForecastRange` hot path
+- Add or update `bench_test.go` when changing a fit, `Forecast`, `ForecastInterval`, `ForecastRange`, or snapshot restore hot path
 
 ## Do not
 

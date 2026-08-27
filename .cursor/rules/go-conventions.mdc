@@ -19,6 +19,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - `Forecast(h)` returns a new `timeseries.Series[float64]`
 - `ForecastInterval(h, level)` returns lower and upper series
 - `ForecastRange(from, to)` / `ForecastIntervalRange` emit grid points in `[from, to]`
+- `SnapshotOf` / `Restore` persist fitted state, not the training series
 - Do not mutate caller series
 - Pre-size forecast slices to `h` or the window length
 

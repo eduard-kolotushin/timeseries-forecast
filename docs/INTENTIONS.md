@@ -40,7 +40,14 @@ Implement models in an **optimized** way: one pass to fit, O(1) work per horizon
 - Skip to the first `k ≥ 1` with `t ≥ from` in O(1); fill only window points (O(h_window), not a walk of skipped `k`)
 - Empty window (inverted range, shorter than `step`, or entirely before `last+step`) fails with a sentinel error
 
-## v1/v2/v3 non-goals
+## v4 must-have
+
+- `SnapshotOf` / `Restore`: versioned envelope `{v, kind, last, step, data}` so a `Fitted` can be persisted and `ForecastRange` run without the training series
+- Explicit fitted state (not closures). `at(k)` / `se(k)` stay O(1) for v1 models
+- Calendar in baseline `data` by name (`""` / `"ru"`); `Restore` calls `CalendarByName`
+- Unknown `v` or `kind` is an error
+
+## v1/v2/v3/v4 non-goals
 
 Do not add these without first updating this document:
 

@@ -88,10 +88,24 @@ func BenchmarkFitSeasonalBaseline(b *testing.B) {
 	}
 }
 
-func BenchmarkFitSeasonalBaselineMinuteOfWeek(b *testing.B) {
-	s := benchMinuteSeries(10_000)
+func BenchmarkRestoreForecastRangeNaive(b *testing.B) {
+	m, err := FitNaive(benchSeries(1_000))
+	if err != nil {
+		b.Fatal(err)
+	}
+	snap, err := SnapshotOf(m)
+	if err != nil {
+		b.Fatal(err)
+	}
+	last := time.Unix(999, 0).UTC()
+	from := last.Add(32 * time.Second)
+	to := last.Add(64 * time.Second)
 	b.ResetTimer()
 	for b.Loop() {
-		_, _ = FitSeasonalBaseline(s, SeasonMinuteOfWeek, nil)
+		got, err := Restore(snap)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_, _ = got.ForecastRange(from, to)
 	}
 }

@@ -1,8 +1,6 @@
 package forecast
 
 import (
-	"math"
-
 	"github.com/eduard-kolotushin/timeseries"
 )
 
@@ -36,10 +34,11 @@ func FitHolt(s timeseries.Series[float64], alpha, beta float64) (Fitted, error) 
 	return pointForecast{
 		lastTime: p.last(),
 		step:     p.step,
-		at:       func(k int) float64 { return level + float64(k)*trend },
-		se: scaledSE(sigma, func(k int) float64 {
-			h := float64(k)
-			return math.Sqrt(1 + (h-1)*(alpha*alpha+alpha*beta*h+h*(h-1)*beta*beta/6))
-		}),
+		kind:     kindHolt,
+		level:    level,
+		trend:    trend,
+		sigma:    sigma,
+		alpha:    alpha,
+		beta:     beta,
 	}, nil
 }
