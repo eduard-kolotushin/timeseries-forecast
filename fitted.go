@@ -36,9 +36,10 @@ func (f pointForecast) Forecast(h int) (timeseries.Series[float64], error) {
 	if f.step <= 0 {
 		return timeseries.Series[float64]{}, ErrNoFrequency
 	}
-	from := f.lastTime.Add(f.step)
-	to := f.lastTime.Add(time.Duration(h) * f.step)
-	return f.ForecastRange(from, to)
+	if err := f.checkWindow(1, h); err != nil {
+		return timeseries.Series[float64]{}, err
+	}
+	return f.forecastK(1, h)
 }
 
 func (f pointForecast) ForecastInterval(h int, level float64) (timeseries.Series[float64], timeseries.Series[float64], error) {
@@ -48,9 +49,14 @@ func (f pointForecast) ForecastInterval(h int, level float64) (timeseries.Series
 	if f.step <= 0 {
 		return timeseries.Series[float64]{}, timeseries.Series[float64]{}, ErrNoFrequency
 	}
-	from := f.lastTime.Add(f.step)
-	to := f.lastTime.Add(time.Duration(h) * f.step)
-	return f.ForecastIntervalRange(from, to, level)
+	z, err := intervalZ(level)
+	if err != nil {
+		return timeseries.Series[float64]{}, timeseries.Series[float64]{}, err
+	}
+	if err := f.checkWindow(1, h); err != nil {
+		return timeseries.Series[float64]{}, timeseries.Series[float64]{}, err
+	}
+	return f.intervalK(1, h, z)
 }
 
 func (f pointForecast) ForecastRange(from, to time.Time) (timeseries.Series[float64], error) {
@@ -58,14 +64,24 @@ func (f pointForecast) ForecastRange(from, to time.Time) (timeseries.Series[floa
 	if err != nil {
 		return timeseries.Series[float64]{}, err
 	}
+	return f.forecastK(k0, k1)
+}
+
+// forecastK emits the grid points k0..k1 (inclusive). The caller has validated
+// the window, so the emitted length is bounded by MaxForecastPoints.
+func (f pointForecast) forecastK(k0, k1 int) (timeseries.Series[float64], error) {
 	n := k1 - k0 + 1
 	times := make([]time.Time, n)
 	values := make([]float64, n)
-	for i := 0; i < n; i++ {
-		k := k0 + i
-		times[i] = f.lastTime.Add(time.Duration(k) * f.step)
-		values[i] = f.at(k)
+	t := f.lastTime.Add(time.Duration(k0) * f.step)
+	for i := range n {
+		times[i] = t
+		values[i] = f.at(k0 + i)
+		t = t.Add(f.step)
 	}
+	// timeseries.New validates and copies both slices again: two extra
+	// allocations the call cannot skip while Series' index fields are
+	// unexported and no owned-slice constructor is exported.
 	return timeseries.New(times, values)
 }
 
@@ -78,23 +94,32 @@ func (f pointForecast) ForecastIntervalRange(from, to time.Time, level float64) 
 	if err != nil {
 		return timeseries.Series[float64]{}, timeseries.Series[float64]{}, err
 	}
+	return f.intervalK(k0, k1, z)
+}
+
+// intervalK emits the Gaussian band for the grid points k0..k1 (inclusive). The
+// caller has validated the window and the level.
+func (f pointForecast) intervalK(k0, k1 int, z float64) (timeseries.Series[float64], timeseries.Series[float64], error) {
 	n := k1 - k0 + 1
 	times := make([]time.Time, n)
 	lo := make([]float64, n)
 	hi := make([]float64, n)
-	for i := 0; i < n; i++ {
+	t := f.lastTime.Add(time.Duration(k0) * f.step)
+	for i := range n {
 		k := k0 + i
-		times[i] = f.lastTime.Add(time.Duration(k) * f.step)
+		times[i] = t
 		pt := f.at(k)
 		s := f.se(k)
 		if math.IsNaN(s) {
 			lo[i] = math.NaN()
 			hi[i] = math.NaN()
-			continue
+		} else {
+			lo[i] = pt - z*s
+			hi[i] = pt + z*s
 		}
-		lo[i] = pt - z*s
-		hi[i] = pt + z*s
+		t = t.Add(f.step)
 	}
+	// Same re-validation and copy as forecastK, once per bound.
 	lower, err := timeseries.New(times, lo)
 	if err != nil {
 		return timeseries.Series[float64]{}, timeseries.Series[float64]{}, err
@@ -107,6 +132,7 @@ func (f pointForecast) ForecastIntervalRange(from, to time.Time, level float64) 
 }
 
 // windowK returns inclusive 1-based k bounds for grid points in [from, to].
+// It rejects a window wider than MaxForecastPoints before any allocation.
 func (f pointForecast) windowK(from, to time.Time) (int, int, error) {
 	if f.step <= 0 {
 		return 0, 0, ErrNoFrequency
@@ -114,13 +140,19 @@ func (f pointForecast) windowK(from, to time.Time) (int, int, error) {
 	if from.After(to) {
 		return 0, 0, ErrRange
 	}
+	d := to.Sub(f.lastTime)
+	if d == maxDuration {
+		// Sub saturates about 292 years out, so the real distance is unknown:
+		// reject the horizon instead of emitting points from a clamped one.
+		return 0, 0, ErrTooManyPoints
+	}
 	k0 := int(ceilDuration(from.Sub(f.lastTime), f.step))
 	if k0 < 1 {
 		k0 = 1
 	}
-	k1 := int(to.Sub(f.lastTime) / f.step)
-	if k1 < k0 {
-		return 0, 0, ErrEmptyRange
+	k1 := int(d / f.step)
+	if err := f.checkWindow(k0, k1); err != nil {
+		return 0, 0, err
 	}
 	return k0, k1, nil
 }

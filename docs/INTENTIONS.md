@@ -39,6 +39,7 @@ Implement models in an **optimized** way: one pass to fit, O(1) work per horizon
 - `Fitted.ForecastRange(from, to)` and `ForecastIntervalRange(from, to, level)`: emit the `last+k×step` grid inside `[from, to]`
 - Skip to the first `k ≥ 1` with `t ≥ from` in O(1); fill only window points (O(h_window), not a walk of skipped `k`)
 - Empty window (inverted range, shorter than `step`, or entirely before `last+step`) fails with a sentinel error
+- A window may emit at most `MaxForecastPoints` grid points; a wider window, or a horizon too distant to express as `k×step`, fails with `ErrTooManyPoints` before anything is allocated (the caller is a panel or a worker, never trusted with an unbounded allocation)
 
 ## v4 must-have
 

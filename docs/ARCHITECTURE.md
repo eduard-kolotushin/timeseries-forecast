@@ -17,6 +17,7 @@ Single package `forecast`:
 | `evaluate.go` | Train/test split and holdout evaluate |
 | `snapshot.go` | `Snapshot` envelope, `SnapshotOf` / `Restore` |
 | `errors.go` | Sentinel errors |
+| `limits.go` | `MaxForecastPoints` and the shared emitted-window check |
 
 ## API
 
@@ -51,6 +52,8 @@ Forecast `h` is the number of future points. Timestamps are `last.Add(k*step)` f
 
 `ForecastRange(from, to)` uses the same grid. It finds the first `k≥1` with `t_k ≥ from` in O(1) (`k = ceil((from-last)/step)`, then `k = max(1, k)`), the last `k` with `t_k ≤ to`, and fills only that slice. `Forecast(h)` is the range `(last+step) .. (last+h×step)`. An inverted range or a window with no grid point returns `ErrRange` / `ErrEmptyRange`.
 
+A window may emit at most `MaxForecastPoints` (1 000 000) points. A wider one — or a `to` so distant that `Sub` saturates (about 292 years) — returns `ErrTooManyPoints` before any slice is allocated. All four entry points (`Forecast`, `ForecastInterval`, `ForecastRange`, `ForecastIntervalRange`) go through the same check, so no request can turn a range into an unbounded response.
+
 ## Prediction intervals
 
 `ForecastInterval(h, level)` returns Gaussian two-sided bounds `at(k) ± z·se(k)` with `z = √2 · erfinv(level)` and `level ∈ (0, 1)`. σ is the MLE 1-step residual scale `sqrt(SSE / n_resid)`. Bounds are `NaN` when `n_resid < 2` (or a baseline bucket with `n < 2`). `se(k)` is O(1):
@@ -61,7 +64,7 @@ Forecast `h` is the number of future points. Timestamps are `last.Add(k*step)` f
 - Seasonal naive: `σ √(k+1)` with `k = floor((h−1)/m)`
 - SES: `σ √[1 + α²(h−1)]` (residual `y_t −` previous level)
 - Holt: `σ √[1 + (h−1)(α² + αβh + h(h−1)β²/6)]` (residual `y_t −` previous level+trend)
-- Seasonal baseline: per-bucket residual sd from one-pass `sum`/`sumsq`, `σ_b √(1 + 1/n_b)` at the future timestamp’s key, same fallback chain as the mean
+- Seasonal baseline: per-bucket residual sd from Welford state (`n`, running mean, `m2`), `σ_b √(1 + 1/n_b)` at the future timestamp’s key, same fallback chain as the mean. Welford, not `sum`/`sumsq`: a raw moment cancels away the whole variance when the values share a large offset (the minute-of-week buckets see few samples each)
 
 Do not keep the residual vector. `Forecast(h)` stays the point series.
 
@@ -70,7 +73,7 @@ Do not keep the residual vector. `Forecast(h)` stays the point series.
 Optimize computation first: work per observation at fit, work per horizon step at forecast.
 
 - Copy `Times()` / `Values()` once at fit; work on those slices
-- Fit is one O(n) pass (SES, Holt, mean, drift, naive σ, seasonal baseline including `sumsq`)
+- Fit is one O(n) pass (SES, Holt, mean, drift, naive σ, seasonal baseline including Welford `m2`)
 - Seasonal baseline keeps a pre-sized means table filled at fit. Hour/day: holiday → weekend → workday → overall. Hour-of-week: (class, weekday, hour), else that class+weekday mean, else overall. Minute-of-week: (class, weekday, minute of day), else that class+weekday mean, else overall. Sunday does not copy Saturday; working Saturday is not weekend Saturday; holidays fall back by hour or minute of day
 - Fitted models keep only forecast state (level/trend/season/last/means/σ or per-bucket se), not the training series. That state is what `SnapshotOf` encodes.
 - `Forecast`, `ForecastInterval`, `ForecastRange`, and `ForecastIntervalRange` each fill one O(h) loop over emitted points; `at(k)` and `se(k)` are O(1)

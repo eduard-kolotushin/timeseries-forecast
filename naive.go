@@ -40,16 +40,17 @@ func FitMean(s timeseries.Series[float64]) (Fitted, error) {
 		return nil, err
 	}
 	n := len(p.values)
-	var sum, sumsq float64
+	var sum float64
 	for _, v := range p.values {
 		sum += v
-		sumsq += v * v
 	}
-	nf := float64(n)
-	mu := sum / nf
-	sse := sumsq - mu*sum
-	if sse < 0 {
-		sse = 0
+	// Two passes: a raw sum-of-squares cancels catastrophically when the values
+	// share a large offset, and the training values are already in memory here.
+	mu := sum / float64(n)
+	var sse float64
+	for _, v := range p.values {
+		d := v - mu
+		sse += d * d
 	}
 	sigma := mleSigma(sse, n)
 	return pointForecast{

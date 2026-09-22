@@ -39,6 +39,11 @@ var (
 	// ErrEmptyRange is returned when [from, to] contains no last+k×step grid point.
 	ErrEmptyRange = errors.New("forecast: no forecast points in the requested range")
 
+	// ErrTooManyPoints is returned when a window would emit more than
+	// MaxForecastPoints grid points, or reaches a horizon too distant to express
+	// as k×step.
+	ErrTooManyPoints = errors.New("forecast: window has too many points")
+
 	// ErrUnknownSnapshot is returned when Snapshot.Kind or Version is not supported.
 	ErrUnknownSnapshot = errors.New("forecast: unknown snapshot")
 

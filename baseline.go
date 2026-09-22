@@ -110,7 +110,7 @@ func FitSeasonalBaseline(s timeseries.Series[float64], season Seasonality, cal *
 		agg.add(key, class, hour, slot, dow, season, v)
 	}
 
-	overall := agg.overallSum / float64(agg.overallN)
+	overall := agg.overall.mean
 	means, ses := fillBaselineMeans(season, agg, overall)
 
 	return pointForecast{
@@ -124,111 +124,115 @@ func FitSeasonalBaseline(s timeseries.Series[float64], season Seasonality, cal *
 	}, nil
 }
 
-type baselineAgg struct {
-	sum, sumsq                       []float64
-	count                            []int
-	classHourSum, classHourSumsq     [nClass][nHour]float64
-	classHourN                       [nClass][nHour]int
-	classMinuteSum, classMinuteSumsq [nClass][nMinute]float64
-	classMinuteN                     [nClass][nMinute]int
-	classSum, classSumsq             [nClass]float64
-	classN                           [nClass]int
-	classDowSum, classDowSumsq       [nClass][nDOW]float64
-	classDowN                        [nClass][nDOW]int
-	overallSum, overallSumsq         float64
-	overallN                         int
+// bucketStat is Welford's streaming state for one seasonal baseline bucket: how
+// many values it holds, their running mean, and the sum of squared deviations
+// from that mean (m2). Accumulating the raw sum and sum of squares instead
+// loses every significant digit of the variance for a series with a large
+// offset, which the minute-of-week buckets hit (few samples per bucket).
+type bucketStat struct {
+	n    int
+	mean float64
+	m2   float64
 }
 
-func newBaselineAgg(nKeys int) *baselineAgg {
-	return &baselineAgg{
-		sum:   make([]float64, nKeys),
-		sumsq: make([]float64, nKeys),
-		count: make([]int, nKeys),
-	}
+// add folds v into the running mean and m2 (Welford's online update).
+func (b *bucketStat) add(v float64) {
+	b.n++
+	d := v - b.mean
+	b.mean += d / float64(b.n)
+	b.m2 += d * (v - b.mean)
 }
 
-func (a *baselineAgg) add(key int, class DayClass, hour, slot int, dow time.Weekday, season Seasonality, v float64) {
-	vv := v * v
-	a.sum[key] += v
-	a.sumsq[key] += vv
-	a.count[key]++
-	a.classHourSum[class][hour] += v
-	a.classHourSumsq[class][hour] += vv
-	a.classHourN[class][hour]++
-	if season == SeasonMinuteOfWeek {
-		a.classMinuteSum[class][slot] += v
-		a.classMinuteSumsq[class][slot] += vv
-		a.classMinuteN[class][slot]++
-	}
-	a.classSum[class] += v
-	a.classSumsq[class] += vv
-	a.classN[class]++
-	a.classDowSum[class][dow] += v
-	a.classDowSumsq[class][dow] += vv
-	a.classDowN[class][dow]++
-	a.overallSum += v
-	a.overallSumsq += vv
-	a.overallN++
+// se is the bucket's prediction standard error: its sample sd with the
+// sqrt(1+1/n) factor, or NaN below two values.
+func (b bucketStat) se() float64 {
+	return bucketSE(b.m2, b.n)
 }
 
-func bucketSE(sum, sumsq float64, n int) float64 {
+// bucketSE turns a Welford m2 into the prediction standard error
+// sqrt(m2/n)·sqrt(1+1/n). It is NaN when the bucket holds fewer than two values.
+func bucketSE(m2 float64, n int) float64 {
 	if n < 2 {
 		return math.NaN()
 	}
-	nf := float64(n)
-	mean := sum / nf
-	v := sumsq/nf - mean*mean
-	if v < 0 {
-		v = 0
+	if m2 < 0 {
+		// m2 is a sum of non-negative products; this clamp only absorbs a
+		// rounding-level negative so the square root stays real.
+		m2 = 0
 	}
-	return math.Sqrt(v) * math.Sqrt(1+1/nf)
+	nf := float64(n)
+	return math.Sqrt(m2/nf) * math.Sqrt(1+1/nf)
+}
+
+type baselineAgg struct {
+	key         []bucketStat
+	classHour   [nClass][nHour]bucketStat
+	classMinute [nClass][nMinute]bucketStat
+	class       [nClass]bucketStat
+	classDow    [nClass][nDOW]bucketStat
+	overall     bucketStat
+}
+
+func newBaselineAgg(nKeys int) *baselineAgg {
+	return &baselineAgg{key: make([]bucketStat, nKeys)}
+}
+
+func (a *baselineAgg) add(key int, class DayClass, hour, slot int, dow time.Weekday, season Seasonality, v float64) {
+	a.key[key].add(v)
+	a.classHour[class][hour].add(v)
+	if season == SeasonMinuteOfWeek {
+		a.classMinute[class][slot].add(v)
+	}
+	a.class[class].add(v)
+	a.classDow[class][dow].add(v)
+	a.overall.add(v)
 }
 
 func fillBaselineMeans(season Seasonality, a *baselineAgg, overall float64) (means, ses []float64) {
-	means = make([]float64, len(a.count))
-	ses = make([]float64, len(a.count))
-	overallSE := bucketSE(a.overallSum, a.overallSumsq, a.overallN)
+	means = make([]float64, len(a.key))
+	ses = make([]float64, len(a.key))
+	overallSE := a.overall.se()
 	hourMean := func(class DayClass, hour int) (float64, bool) {
-		n := a.classHourN[class][hour]
-		if n == 0 {
+		b := a.classHour[class][hour]
+		if b.n == 0 {
 			return 0, false
 		}
-		return a.classHourSum[class][hour] / float64(n), true
+		return b.mean, true
 	}
 	hourSE := func(class DayClass, hour int) (float64, bool) {
-		n := a.classHourN[class][hour]
-		if n == 0 {
+		b := a.classHour[class][hour]
+		if b.n == 0 {
 			return 0, false
 		}
-		return bucketSE(a.classHourSum[class][hour], a.classHourSumsq[class][hour], n), true
+		return b.se(), true
 	}
 	minuteMean := func(class DayClass, minute int) (float64, bool) {
-		n := a.classMinuteN[class][minute]
-		if n == 0 {
+		b := a.classMinute[class][minute]
+		if b.n == 0 {
 			return 0, false
 		}
-		return a.classMinuteSum[class][minute] / float64(n), true
+		return b.mean, true
 	}
 	minuteSE := func(class DayClass, minute int) (float64, bool) {
-		n := a.classMinuteN[class][minute]
-		if n == 0 {
+		b := a.classMinute[class][minute]
+		if b.n == 0 {
 			return 0, false
 		}
-		return bucketSE(a.classMinuteSum[class][minute], a.classMinuteSumsq[class][minute], n), true
+		return b.se(), true
 	}
 	classMean := func(class DayClass) (float64, bool) {
-		n := a.classN[class]
-		if n == 0 {
+		b := a.class[class]
+		if b.n == 0 {
 			return 0, false
 		}
-		return a.classSum[class] / float64(n), true
+		return b.mean, true
 	}
 	classSE := func(class DayClass) (float64, bool) {
-		n := a.classN[class]
-		if n == 0 {
+		b := a.class[class]
+		if b.n == 0 {
 			return 0, false
 		}
-		return bucketSE(a.classSum[class], a.classSumsq[class], n), true
+		return b.se(), true
 	}
 	fallbackBySlot := func(slotMean, slotSEFn func(DayClass, int) (float64, bool), class DayClass, slot int) (float64, float64) {
 		if class == ClassHoliday {
@@ -280,9 +284,9 @@ func fillBaselineMeans(season Seasonality, a *baselineAgg, overall float64) (mea
 		for class := ClassWorkday; class <= ClassHoliday; class++ {
 			for hour := 0; hour < nHour; hour++ {
 				key := int(class)*nHour + hour
-				if a.count[key] > 0 {
-					means[key] = a.sum[key] / float64(a.count[key])
-					ses[key] = bucketSE(a.sum[key], a.sumsq[key], a.count[key])
+				if b := a.key[key]; b.n > 0 {
+					means[key] = b.mean
+					ses[key] = b.se()
 					continue
 				}
 				means[key], ses[key] = fallbackHour(class, hour)
@@ -290,9 +294,9 @@ func fillBaselineMeans(season Seasonality, a *baselineAgg, overall float64) (mea
 		}
 	case SeasonDay:
 		for dow := 0; dow < nDOW; dow++ {
-			if a.count[dow] > 0 {
-				means[dow] = a.sum[dow] / float64(a.count[dow])
-				ses[dow] = bucketSE(a.sum[dow], a.sumsq[dow], a.count[dow])
+			if b := a.key[dow]; b.n > 0 {
+				means[dow] = b.mean
+				ses[dow] = b.se()
 				continue
 			}
 			c := ClassWorkday
@@ -301,9 +305,9 @@ func fillBaselineMeans(season Seasonality, a *baselineAgg, overall float64) (mea
 			}
 			means[dow], ses[dow] = fallbackClass(c)
 		}
-		if a.count[nDOW] > 0 {
-			means[nDOW] = a.sum[nDOW] / float64(a.count[nDOW])
-			ses[nDOW] = bucketSE(a.sum[nDOW], a.sumsq[nDOW], a.count[nDOW])
+		if b := a.key[nDOW]; b.n > 0 {
+			means[nDOW] = b.mean
+			ses[nDOW] = b.se()
 		} else {
 			means[nDOW], ses[nDOW] = fallbackClass(ClassHoliday)
 		}
@@ -332,14 +336,14 @@ func fillWeekSlots(
 		for dow := 0; dow < nDOW; dow++ {
 			for slot := 0; slot < nSlot; slot++ {
 				key := int(class)*nDOW*nSlot + dow*nSlot + slot
-				if a.count[key] > 0 {
-					means[key] = a.sum[key] / float64(a.count[key])
-					ses[key] = bucketSE(a.sum[key], a.sumsq[key], a.count[key])
+				if b := a.key[key]; b.n > 0 {
+					means[key] = b.mean
+					ses[key] = b.se()
 					continue
 				}
-				if n := a.classDowN[class][dow]; n > 0 {
-					means[key] = a.classDowSum[class][dow] / float64(n)
-					ses[key] = bucketSE(a.classDowSum[class][dow], a.classDowSumsq[class][dow], n)
+				if b := a.classDow[class][dow]; b.n > 0 {
+					means[key] = b.mean
+					ses[key] = b.se()
 					continue
 				}
 				if class == ClassHoliday {
