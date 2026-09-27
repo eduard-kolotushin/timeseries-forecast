@@ -148,6 +148,11 @@ func marshalKindData(p pointForecast) (json.RawMessage, error) {
 	case kindSeasonal:
 		body = seasonalData{Season: floatsToJSON(p.season), Period: p.period, Sigma: jsonFloat(p.sigma)}
 	case kindBaseline:
+		// Restore maps the name back through CalendarByName, which reads "" as
+		// calendar off, so a table without a built-in name cannot be reproduced.
+		if p.cal != nil && p.cal.Name() == "" {
+			return nil, fmt.Errorf("%w: calendar has no built-in name", ErrInvalidSnapshot)
+		}
 		body = baselineData{
 			Season:   seasonName(p.seasonality),
 			Calendar: p.cal.Name(),

@@ -48,6 +48,23 @@ func TestProductionCalendarRU2026(t *testing.T) {
 	}
 }
 
+func TestEmbeddedRUCalendarCoversTheCurrentYear(t *testing.T) {
+	t.Parallel()
+	cal, err := CalendarRU()
+	if err != nil {
+		t.Fatal(err)
+	}
+	newest := 0
+	for y := range cal.years {
+		if y > newest {
+			newest = y
+		}
+	}
+	if year := time.Now().Year(); newest < year {
+		t.Fatalf("the embedded RU calendar covers up to %d but it is %d: add the year to calendars/ru.csv", newest, year)
+	}
+}
+
 func TestCalendarOffUTC(t *testing.T) {
 	t.Parallel()
 	var cal *Calendar

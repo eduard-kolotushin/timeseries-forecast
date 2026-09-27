@@ -30,6 +30,10 @@ func TestWindowKCap(t *testing.T) {
 	base := tAt(0)
 	minute := func(n int) time.Time { return base.Add(time.Duration(2+n) * time.Minute) }
 	daily := func(n int) time.Time { return base.Add(time.Duration(2+n) * day) }
+	// 106751 days after the model's last point: a whole number of day steps, with
+	// d+step past time.Duration's range. AddDate (not Add(n*day)) avoids the
+	// overflow that multiplying the duration would hit.
+	farLast := base.Add(2*day).AddDate(0, 0, 106751)
 
 	tests := []struct {
 		name    string
@@ -50,6 +54,10 @@ func TestWindowKCap(t *testing.T) {
 		// A day step keeps k inside the point cap, so only the saturated distance rejects this.
 		{"saturated horizon past the point cap", day, daily(1), daily(1).AddDate(300, 0, 0), 0, 0, ErrTooManyPoints},
 		{"inverted", time.Minute, minute(2), minute(1), 0, 0, ErrRange},
+		// The band where (num+den-1) wraps int64: the old ceiling went negative, k0
+		// was clamped to 1, and a 106751-point grid ran from last+step for ~292 years
+		// instead of the single point at the requested time.
+		{"overflowing ceiling near the saturated horizon", day, farLast, farLast, 106751, 106751, nil},
 		{"before the grid", time.Minute, minute(-1), minute(-1), 0, 0, ErrEmptyRange},
 	}
 	for _, tt := range tests {

@@ -34,7 +34,7 @@ func Compare(actual, pred timeseries.Series[float64]) (Metrics, error) {
 			d = -d
 		}
 		abs += d
-		sq += (av[i] - pv[i]) * (av[i] - pv[i])
+		sq += d * d
 		n++
 		if av[i] != 0 {
 			ape += d / math.Abs(av[i])

@@ -211,13 +211,23 @@ func TestHoltInterval(t *testing.T) {
 	sigma := math.Sqrt(10.0 / 3.0)
 	holtSE := func(k int) float64 {
 		h := float64(k)
-		return sigma * math.Sqrt(1+(h-1)*(1+h+h*(h-1)/6))
+		return sigma * math.Sqrt(1+(h-1)*(1+h+h*(2*h-1)/6))
 	}
 	z := z95()
 	checkBounds(t, m, 2,
 		[]float64{8 - z*holtSE(1), 11 - z*holtSE(2)},
 		[]float64{8 + z*holtSE(1), 11 + z*holtSE(2)},
 	)
+
+	// α=β=1 makes the variance trace exact: Var(h)/σ² = 1, 5, 14 for h = 1..3.
+	// The β² coefficient this test used to encode gave 11/3 and 11 there.
+	lo, hi, err := m.ForecastInterval(3, 0.95)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := hi.Values()[2]-lo.Values()[2], 2*z*sigma*math.Sqrt(14); math.Abs(got-want) > 1e-9 {
+		t.Fatalf("h=3 band width = %v, want %v (14σ²)", got, want)
+	}
 }
 
 func TestSeasonalBaselineInterval(t *testing.T) {

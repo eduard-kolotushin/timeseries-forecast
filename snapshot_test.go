@@ -103,6 +103,40 @@ func TestSnapshotRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSnapshotOfRejectsACustomCalendar(t *testing.T) {
+	t.Parallel()
+	cal, err := ParseProductionCalendar([]byte("2026;1;1;1;1;1;1;1;1;1;1;1;1"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cal.Name() != "" {
+		t.Fatalf("a parsed table unexpectedly has a built-in name: %q", cal.Name())
+	}
+	start := time.Date(2026, 1, 12, 10, 0, 0, 0, time.UTC)
+	times := []time.Time{start, start.Add(time.Hour), start.Add(24 * time.Hour), start.Add(25 * time.Hour)}
+	m, err := FitSeasonalBaseline(mustSeries(times, []float64{8, 1, 12, 1}), SeasonHour, cal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Restore would read the empty name back as calendar off, i.e. a different
+	// model, so the snapshot must fail instead of round-tripping silently.
+	if _, err := SnapshotOf(m); !errors.Is(err, ErrInvalidSnapshot) {
+		t.Fatalf("SnapshotOf(custom calendar) = %v, want ErrInvalidSnapshot", err)
+	}
+	// The embedded calendar keeps round-tripping.
+	ru, err := CalendarRU()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rm, err := FitSeasonalBaseline(mustSeries(times, []float64{8, 1, 12, 1}), SeasonHour, ru)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SnapshotOf(rm); err != nil {
+		t.Fatalf("SnapshotOf(ru) = %v, want nil", err)
+	}
+}
+
 func TestSnapshotUnknown(t *testing.T) {
 	t.Parallel()
 	if _, err := Restore(Snapshot{V: 99, Kind: kindNaive, Step: int64(time.Second)}); !errors.Is(err, ErrUnknownSnapshot) {

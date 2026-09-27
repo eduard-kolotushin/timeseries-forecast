@@ -71,18 +71,20 @@ func (f pointForecast) ForecastRange(from, to time.Time) (timeseries.Series[floa
 // the window, so the emitted length is bounded by MaxForecastPoints.
 func (f pointForecast) forecastK(k0, k1 int) (timeseries.Series[float64], error) {
 	n := k1 - k0 + 1
-	times := make([]time.Time, n)
-	values := make([]float64, n)
+	points := make([]timeseries.Point[float64], n)
 	t := f.lastTime.Add(time.Duration(k0) * f.step)
 	for i := range n {
-		times[i] = t
-		values[i] = f.at(k0 + i)
+		points[i] = timeseries.Point[float64]{Time: t, Value: f.at(k0 + i)}
 		t = t.Add(f.step)
 	}
-	// timeseries.New validates and copies both slices again: two extra
-	// allocations the call cannot skip while Series' index fields are
-	// unexported and no owned-slice constructor is exported.
-	return timeseries.New(times, values)
+	// FromPoints builds the index it validates, so the grid is materialized once.
+	// The timestamps ascend by step (checkWindow rejects step <= 0), so the error
+	// branch is unreachable.
+	s, err := timeseries.FromPoints(points)
+	if err != nil {
+		return timeseries.Series[float64]{}, err
+	}
+	return s, nil
 }
 
 func (f pointForecast) ForecastIntervalRange(from, to time.Time, level float64) (timeseries.Series[float64], timeseries.Series[float64], error) {
@@ -101,30 +103,28 @@ func (f pointForecast) ForecastIntervalRange(from, to time.Time, level float64) 
 // caller has validated the window and the level.
 func (f pointForecast) intervalK(k0, k1 int, z float64) (timeseries.Series[float64], timeseries.Series[float64], error) {
 	n := k1 - k0 + 1
-	times := make([]time.Time, n)
-	lo := make([]float64, n)
-	hi := make([]float64, n)
+	lo := make([]timeseries.Point[float64], n)
+	hi := make([]timeseries.Point[float64], n)
 	t := f.lastTime.Add(time.Duration(k0) * f.step)
 	for i := range n {
 		k := k0 + i
-		times[i] = t
 		pt := f.at(k)
 		s := f.se(k)
+		lo[i].Time, hi[i].Time = t, t
 		if math.IsNaN(s) {
-			lo[i] = math.NaN()
-			hi[i] = math.NaN()
+			lo[i].Value, hi[i].Value = math.NaN(), math.NaN()
 		} else {
-			lo[i] = pt - z*s
-			hi[i] = pt + z*s
+			lo[i].Value = pt - z*s
+			hi[i].Value = pt + z*s
 		}
 		t = t.Add(f.step)
 	}
-	// Same re-validation and copy as forecastK, once per bound.
-	lower, err := timeseries.New(times, lo)
+	// One pass per bound, as in forecastK, with the same unreachable error.
+	lower, err := timeseries.FromPoints(lo)
 	if err != nil {
 		return timeseries.Series[float64]{}, timeseries.Series[float64]{}, err
 	}
-	upper, err := timeseries.New(times, hi)
+	upper, err := timeseries.FromPoints(hi)
 	if err != nil {
 		return timeseries.Series[float64]{}, timeseries.Series[float64]{}, err
 	}
@@ -164,7 +164,14 @@ func ceilDuration(num, den time.Duration) int64 {
 	if num <= 0 {
 		return 0
 	}
-	return (int64(num) + int64(den) - 1) / int64(den)
+	// Divide before adding: int64(num)+int64(den)-1 wraps for a num in the
+	// step-wide band below maxDuration, which is exactly where windowK may be
+	// asked for a legitimate point (the saturated distance itself is rejected).
+	q := int64(num) / int64(den)
+	if int64(num)%int64(den) != 0 {
+		q++
+	}
+	return q
 }
 
 func intervalZ(level float64) (float64, error) {
@@ -239,12 +246,20 @@ func (f pointForecast) se(k int) float64 {
 		h := float64(k)
 		return f.sigma * math.Sqrt(h*(1+h/float64(f.n)))
 	case kindSeasonal:
+		if f.period <= 0 || len(f.season) == 0 {
+			// The same unrepresentable state at() reports as NaN; without this
+			// guard the integer division below would panic.
+			return math.NaN()
+		}
 		return f.sigma * math.Sqrt(float64((k-1)/f.period+1))
 	case kindSES:
 		return f.sigma * math.Sqrt(1+f.alpha*f.alpha*float64(k-1))
 	case kindHolt:
 		h := float64(k)
-		return f.sigma * math.Sqrt(1+(h-1)*(f.alpha*f.alpha+f.alpha*f.beta*h+h*(h-1)*f.beta*f.beta/6))
+		// For the AAN recursion holt.go implements, rolling it out gives
+		// ŷ_{t+h} = l_t + h·b_t + e_{t+h} + Σ_{j=1..h-1}(α+βj)e_{t+h-j}, hence
+		// Var = σ²[1 + Σ(α+βj)²] = σ²[1 + (h-1)α² + αβh(h-1) + β²(h-1)h(2h-1)/6].
+		return f.sigma * math.Sqrt(1+(h-1)*(f.alpha*f.alpha+f.alpha*f.beta*h+f.beta*f.beta*h*(2*h-1)/6))
 	default:
 		return math.NaN()
 	}

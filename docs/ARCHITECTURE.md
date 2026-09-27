@@ -42,7 +42,7 @@ func SnapshotOf(f Fitted) (Snapshot, error)
 func Restore(s Snapshot) (Fitted, error)
 ```
 
-`cal == nil` means calendar off (UTC, weekend = Sat/Sun). `CalendarByName("ru")` loads the embedded Russian production calendar (`Europe/Moscow`). A timestamp whose civil year is not in the file is classified as calendar off; holiday rules and the calendar timezone do not apply to other years.
+`cal == nil` means calendar off (UTC, weekend = Sat/Sun). `CalendarByName("ru")` loads the embedded Russian production calendar (`Europe/Moscow`). A timestamp whose civil year is not in the file is classified as calendar off; holiday rules and the calendar timezone do not apply to other years. The embedded table covers 2026 (one row per year in `calendars/ru.csv`, which is how the feature is maintained — a year missing from the file silently classifies as calendar off, and `TestEmbeddedRUCalendarCoversTheCurrentYear` fails once the newest row is older than the current year). Only the built-in calendars survive a snapshot: `SnapshotOf` refuses a baseline fitted with a caller-built table, because `Restore` can only map `CalendarByName` names back to a `*Calendar`.
 
 Callers use the public `timeseries` API only (`Times`, `Values`, `New`, `DropNA`, `SliceIndex`, `AlignFloat`). Do not reach into unexported Series fields.
 
@@ -63,7 +63,7 @@ A window may emit at most `MaxForecastPoints` (1 000 000) points. A wider one �
 - Drift: `σ √[h (1 + h/n)]` (σ from `y_t − y_{t−1} − b`)
 - Seasonal naive: `σ √(k+1)` with `k = floor((h−1)/m)`
 - SES: `σ √[1 + α²(h−1)]` (residual `y_t −` previous level)
-- Holt: `σ √[1 + (h−1)(α² + αβh + h(h−1)β²/6)]` (residual `y_t −` previous level+trend)
+- Holt: `σ √[1 + (h−1)(α² + αβh + β²·h(2h−1)/6)]` (residual `y_t −` previous level+trend)
 - Seasonal baseline: per-bucket residual sd from Welford state (`n`, running mean, `m2`), `σ_b √(1 + 1/n_b)` at the future timestamp’s key, same fallback chain as the mean. Welford, not `sum`/`sumsq`: a raw moment cancels away the whole variance when the values share a large offset (the minute-of-week buckets see few samples each)
 
 Do not keep the residual vector. `Forecast(h)` stays the point series.
@@ -77,7 +77,7 @@ Optimize computation first: work per observation at fit, work per horizon step a
 - Seasonal baseline keeps a pre-sized means table filled at fit. Hour/day: holiday → weekend → workday → overall. Hour-of-week: (class, weekday, hour), else that class+weekday mean, else overall. Minute-of-week: (class, weekday, minute of day), else that class+weekday mean, else overall. Sunday does not copy Saturday; working Saturday is not weekend Saturday; holidays fall back by hour or minute of day
 - Fitted models keep only forecast state (level/trend/season/last/means/σ or per-bucket se), not the training series. That state is what `SnapshotOf` encodes.
 - `Forecast`, `ForecastInterval`, `ForecastRange`, and `ForecastIntervalRange` each fill one O(h) loop over emitted points; `at(k)` and `se(k)` are O(1)
-- Forecast allocates exactly the emitted length; intervals allocate two series of that length
+- `Forecast` builds its grid with `timeseries.FromPoints` in one pass — one points slice, no second copy through `New`; intervals allocate two series of the emitted length
 - Do not clone the training series unless a public helper needs an independent copy
 
 ## Testing
