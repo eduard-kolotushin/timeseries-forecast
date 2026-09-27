@@ -63,7 +63,7 @@ A window may emit at most `MaxForecastPoints` (1 000 000) points. A wider one �
 - Drift: `σ √[h (1 + h/n)]` (σ from `y_t − y_{t−1} − b`)
 - Seasonal naive: `σ √(k+1)` with `k = floor((h−1)/m)`
 - SES: `σ √[1 + α²(h−1)]` (residual `y_t −` previous level)
-- Holt: `σ √[1 + (h−1)(α² + αβh + β²·h(2h−1)/6)]` (residual `y_t −` previous level+trend)
+- Holt: `σ √[1 + α²(h−1)(1 + βh + β²·h(2h−1)/6)]` (trend moved by the level increment, `b_t = b_{t−1} + αβ·e_t`; residual `y_t −` previous level+trend)
 - Seasonal baseline: per-bucket residual sd from Welford state (`n`, running mean, `m2`), `σ_b √(1 + 1/n_b)` at the future timestamp’s key, same fallback chain as the mean. Welford, not `sum`/`sumsq`: a raw moment cancels away the whole variance when the values share a large offset (the minute-of-week buckets see few samples each)
 
 Do not keep the residual vector. `Forecast(h)` stays the point series.

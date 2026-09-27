@@ -256,10 +256,11 @@ func (f pointForecast) se(k int) float64 {
 		return f.sigma * math.Sqrt(1+f.alpha*f.alpha*float64(k-1))
 	case kindHolt:
 		h := float64(k)
-		// For the AAN recursion holt.go implements, rolling it out gives
-		// ŷ_{t+h} = l_t + h·b_t + e_{t+h} + Σ_{j=1..h-1}(α+βj)e_{t+h-j}, hence
-		// Var = σ²[1 + Σ(α+βj)²] = σ²[1 + (h-1)α² + αβh(h-1) + β²(h-1)h(2h-1)/6].
-		return f.sigma * math.Sqrt(1+(h-1)*(f.alpha*f.alpha+f.alpha*f.beta*h+f.beta*f.beta*h*(2*h-1)/6))
+		// holt.go moves the trend by the same step's level increment:
+		// b_t = b_{t−1} + αβ·e_t, so rolling the recursion out gives
+		// ŷ_{t+h} = l_t + h·b_t + e_{t+h} + Σ_{j=1..h-1} α(1+βj)·e_{t+h-j}, hence
+		// Var = σ²[1 + α² Σ(1+βj)²] = σ²[1 + α²(h−1)(1 + βh + β²·h(2h−1)/6)].
+		return f.sigma * math.Sqrt(1+f.alpha*f.alpha*(h-1)*(1+f.beta*h+f.beta*f.beta*h*(2*h-1)/6))
 	default:
 		return math.NaN()
 	}

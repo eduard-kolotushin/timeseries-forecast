@@ -190,6 +190,28 @@ func TestSESInterval(t *testing.T) {
 	)
 }
 
+// holtTrace rolls the recursion FitHolt runs out by impulse, so a test can pin the
+// interval against the recursion itself rather than restating the variance formula.
+// The state is zero at t and the h-step forecast is l_t + h·b_t = 0, so a unit
+// innovation at step j contributes one realization of the h-step error; independent
+// unit innovations make Var/σ² the sum of those contributions' squares.
+func holtTrace(alpha, beta float64, h int) float64 {
+	var trace float64
+	for j := 1; j <= h; j++ {
+		level, trend, y := 0.0, 0.0, 0.0
+		for k := 1; k <= h; k++ {
+			e := 0.0
+			if k == j {
+				e = 1
+			}
+			y = level + trend + e
+			level, trend = level+trend+alpha*e, trend+alpha*beta*e
+		}
+		trace += y * y
+	}
+	return trace
+}
+
 func TestHoltInterval(t *testing.T) {
 	t.Parallel()
 	m, err := FitHolt(series(1, 2, 3, 4), 1, 1)
@@ -209,10 +231,7 @@ func TestHoltInterval(t *testing.T) {
 	// sse=0+1+9=10; n=3; σ=sqrt(10/3)
 	// point k: 5+3k
 	sigma := math.Sqrt(10.0 / 3.0)
-	holtSE := func(k int) float64 {
-		h := float64(k)
-		return sigma * math.Sqrt(1+(h-1)*(1+h+h*(2*h-1)/6))
-	}
+	holtSE := func(k int) float64 { return sigma * math.Sqrt(holtTrace(1, 1, k)) }
 	z := z95()
 	checkBounds(t, m, 2,
 		[]float64{8 - z*holtSE(1), 11 - z*holtSE(2)},
@@ -227,6 +246,27 @@ func TestHoltInterval(t *testing.T) {
 	}
 	if got, want := hi.Values()[2]-lo.Values()[2], 2*z*sigma*math.Sqrt(14); math.Abs(got-want) > 1e-9 {
 		t.Fatalf("h=3 band width = %v, want %v (14σ²)", got, want)
+	}
+
+	// α=β=1 is the one point where every candidate variance formula coincides, so
+	// the panel's own defaults (model holt at α=0.8, β=0.2) are pinned too. Widths
+	// are compared as ratios between horizons, which cancels this fit's σ and
+	// leaves only the α-dependence the interval has to reproduce.
+	m2, err := FitHolt(series(1, 2, 2, 5), 0.8, 0.2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lo2, hi2, err := m2.ForecastInterval(6, 0.95)
+	if err != nil {
+		t.Fatal(err)
+	}
+	width := func(k int) float64 { return hi2.Values()[k-1] - lo2.Values()[k-1] }
+	for k := 2; k <= 6; k++ {
+		got := width(k) / width(k-1)
+		want := math.Sqrt(holtTrace(0.8, 0.2, k) / holtTrace(0.8, 0.2, k-1))
+		if math.Abs(got-want) > 1e-9 {
+			t.Fatalf("α=0.8, β=0.2 width ratio h=%d/h=%d = %v, want %v", k, k-1, got, want)
+		}
 	}
 }
 
