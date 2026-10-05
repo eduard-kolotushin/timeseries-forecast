@@ -138,9 +138,26 @@ func TestHolt(t *testing.T) {
 
 func TestForecastHorizon(t *testing.T) {
 	t.Parallel()
-	m, _ := FitNaive(series(1, 2))
+	m, _ := FitNaive(series(1, 2, 3, 4))
 	if _, err := m.Forecast(0); err != ErrHorizon {
 		t.Fatalf("horizon: %v", err)
+	}
+	if _, err := m.Forecast(-1); err != ErrHorizon {
+		t.Fatalf("negative horizon: %v", err)
+	}
+	fc, err := m.Forecast(3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fc.Len() != 3 {
+		t.Fatalf("len=%d want 3", fc.Len())
+	}
+	// Future timestamps are last + k*step, step inferred as 1s.
+	want := []time.Time{tAt(4), tAt(5), tAt(6)}
+	for i, w := range want {
+		if !fc.Times()[i].Equal(w) {
+			t.Fatalf("time %d = %v, want %v", i, fc.Times()[i], w)
+		}
 	}
 }
 
