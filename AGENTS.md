@@ -53,3 +53,4 @@ ARIMA/SARIMA, Prophet, ML models, multivariate, quantile/bootstrap intervals, se
 - Depend on a tagged `timeseries` module; do not add a `replace` directive
 - Do not copy Series internals; use the public timeseries API only
 - GitHub Actions on `main`: `gofmt` and `go test ./...`
+- Release a consumer-visible change as an annotated tag — patch for tests/docs/dependency pins, minor for API additions, major for removals: `git tag -a vX.Y.Z -m "…" && git push origin vX.Y.Z`. CI runs on branch pushes, not tags.
