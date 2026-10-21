@@ -20,12 +20,18 @@ func FitHolt(s timeseries.Series[float64], alpha, beta float64) (Fitted, error) 
 	level := p.values[0]
 	trend := p.values[1] - p.values[0]
 	a1, b1 := 1-alpha, 1-beta
+	// The trend is seeded from the first two points, so at i == 1 the seeded
+	// forecast (level+trend) equals y[1] exactly: that residual is zero by
+	// construction, not noise. Counting it in nResid would shrink σ and narrow
+	// every interval, so the sum starts at the first genuine one-step error.
 	var sse float64
 	nResid := 0
 	for i := 1; i < len(p.values); i++ {
-		r := p.values[i] - (level + trend)
-		sse += r * r
-		nResid++
+		if i > 1 {
+			r := p.values[i] - (level + trend)
+			sse += r * r
+			nResid++
+		}
 		prev := level
 		level = alpha*p.values[i] + a1*(level+trend)
 		trend = beta*(level-prev) + b1*trend

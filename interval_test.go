@@ -225,12 +225,13 @@ func TestHoltInterval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// i=1: pred=1+1=2, resid=0; level=2, trend=1
+	// i=1: the seeded forecast is level+trend = 1+1 = 2 = y[1], so this residual
+	// is structurally zero and is not counted; level=2, trend=1
 	// i=2: pred=3, resid=2-3=-1; level=2, trend=0
 	// i=3: pred=2, resid=5-2=3; level=5, trend=3
-	// sse=0+1+9=10; n=3; σ=sqrt(10/3)
+	// sse=1+9=10; n_resid=2; σ=sqrt(10/2)
 	// point k: 5+3k
-	sigma := math.Sqrt(10.0 / 3.0)
+	sigma := math.Sqrt(10.0 / 2.0)
 	holtSE := func(k int) float64 { return sigma * math.Sqrt(holtTrace(1, 1, k)) }
 	z := z95()
 	checkBounds(t, m, 2,
