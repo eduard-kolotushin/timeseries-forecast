@@ -134,30 +134,44 @@ func (f pointForecast) intervalK(k0, k1 int, z float64) (timeseries.Series[float
 	return lower, upper, nil
 }
 
-// windowK returns inclusive signed k bounds for grid points in [from, to]:
-// k >= 1 is the forecast horizon, k <= 0 evaluates the final fitted state on
-// the same grid (a backcast). It rejects a window wider than MaxForecastPoints
-// before any allocation.
-func (f pointForecast) windowK(from, to time.Time) (int, int, error) {
-	if f.step <= 0 {
+// WindowBounds returns the inclusive signed k bounds of the grid points
+// lastTime + k*step inside [from, to]: k0 = ceil((from-last)/step),
+// k1 = floor((to-last)/step). k >= 1 is the forecast horizon and k <= 0
+// evaluates the final fitted state (a backcast); off-grid times are not
+// emitted. It is the computation ForecastRange applies, exported so a caller
+// that must refuse an oversized window before fitting or restoring has one
+// implementation to call instead of mirroring the arithmetic.
+//
+// Errors: ErrNoFrequency for step <= 0, ErrRange for an inverted window,
+// ErrEmptyRange when no grid point falls inside, and ErrTooManyPoints when the
+// window would emit more than MaxForecastPoints points or a bound is so
+// distant that time.Time.Sub saturates (about 292 years either side) or
+// |k|*step leaves a time.Duration.
+func WindowBounds(lastTime time.Time, step time.Duration, from, to time.Time) (int, int, error) {
+	if step <= 0 {
 		return 0, 0, ErrNoFrequency
 	}
 	if from.After(to) {
 		return 0, 0, ErrRange
 	}
-	lo := from.Sub(f.lastTime)
-	hi := to.Sub(f.lastTime)
+	lo := from.Sub(lastTime)
+	hi := to.Sub(lastTime)
 	// Sub saturates about 292 years out on either side, so the real distance
 	// is unknown: reject instead of emitting points from a clamped one.
 	if hi == maxDuration || lo == minDuration {
 		return 0, 0, ErrTooManyPoints
 	}
-	k0 := int(ceilDuration(lo, f.step))
-	k1 := int(floorDuration(hi, f.step))
-	if err := f.checkWindow(k0, k1); err != nil {
+	k0 := int(ceilDuration(lo, step))
+	k1 := int(floorDuration(hi, step))
+	if err := checkKBounds(step, k0, k1); err != nil {
 		return 0, 0, err
 	}
 	return k0, k1, nil
+}
+
+// windowK applies the exported grid arithmetic to this fitted model.
+func (f pointForecast) windowK(from, to time.Time) (int, int, error) {
+	return WindowBounds(f.lastTime, f.step, from, to)
 }
 
 // ceilDuration returns ceil(num/den) for den > 0, exact for negative num too:

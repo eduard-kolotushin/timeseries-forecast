@@ -40,6 +40,7 @@ Implement models in an **optimized** way: one pass to fit, O(1) work per horizon
 - Locate the first and last `k` inside the window in O(1) (`ceil`/`floor` of the signed offsets); fill only window points (O(h_window), not a walk of skipped `k`)
 - Empty window (inverted range, or one with no grid point, such as shorter than `step`) fails with a sentinel error
 - A window may emit at most `MaxForecastPoints` grid points; a wider window, or a horizon too distant to express as `k×step`, fails with `ErrTooManyPoints` before anything is allocated (the caller is a panel or a worker, never trusted with an unbounded allocation)
+- `WindowBounds` is the exported form of that grid computation, so a transport that must refuse an oversized window before fitting or restoring calls this package instead of mirroring the signed arithmetic
 
 ## v4 must-have
 

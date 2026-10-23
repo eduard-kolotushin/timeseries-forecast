@@ -40,7 +40,11 @@ func FitHolt(s timeseries.Series[float64], alpha, beta float64) (Fitted, error)
 type Snapshot struct { V int; Kind string; Last, Step int64; Data json.RawMessage }
 func SnapshotOf(f Fitted) (Snapshot, error)
 func Restore(s Snapshot) (Fitted, error)
+
+func WindowBounds(lastTime time.Time, step time.Duration, from, to time.Time) (k0, k1 int, err error)
 ```
+
+`WindowBounds` is the grid computation `ForecastRange` applies, exported so a transport that must refuse an oversized window before fitting or restoring (the Grafana plugin's pre-flight, or a worker) calls one implementation instead of mirroring the signed `ceil`/`floor` arithmetic and its limits.
 
 `cal == nil` means calendar off (UTC, weekend = Sat/Sun). `CalendarByName("ru")` loads the embedded Russian production calendar (`Europe/Moscow`). A timestamp whose civil year is not in the file is classified as calendar off; holiday rules and the calendar timezone do not apply to other years. The embedded table covers 2026 (one row per year in `calendars/ru.csv`, which is how the feature is maintained — a year missing from the file silently classifies as calendar off, and `TestEmbeddedRUCalendarCoversTheCurrentYear` fails once the newest row is older than the current year). Only the built-in calendars survive a snapshot: `SnapshotOf` refuses a baseline fitted with a caller-built table, because `Restore` can only map `CalendarByName` names back to a `*Calendar`.
 
