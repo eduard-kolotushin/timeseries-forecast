@@ -44,7 +44,7 @@ Implement models in an **optimized** way: one pass to fit, O(1) work per horizon
 
 ## v4 must-have
 
-- `SnapshotOf` / `Restore`: versioned envelope `{v, kind, last, step, data}` so a `Fitted` can be persisted and `ForecastRange` run without the training series
+- `SnapshotOf` / `Restore`: versioned envelope `{v, kind, last, sub, step, data}` so a `Fitted` can be persisted and `ForecastRange` run without the training series; `last` stays unix milliseconds and `sub` carries the sub-millisecond remainder, so a sub-millisecond grid restores exactly
 - Explicit fitted state (not closures). `at(k)` / `se(k)` stay O(1) for v1 models
 - Calendar in baseline `data` by name (`""` / `"ru"`); `Restore` calls `CalendarByName`
 - Unknown `v` or `kind` is an error

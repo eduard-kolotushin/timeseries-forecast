@@ -22,11 +22,18 @@ const (
 
 // Snapshot is a versioned envelope of fitted state. Restore rebuilds a Fitted
 // that can ForecastRange without the training series.
+//
+// Last keeps the envelope readable as unix milliseconds; Sub carries the
+// remainder of the last timestamp's sub-millisecond fraction (0..999999 ns), so
+// a fit on a sub-millisecond grid restores onto the same grid. Sub was added
+// beside Last instead of changing Last's unit: a v1 written before it decodes
+// as zero.
 type Snapshot struct {
 	V    int             `json:"v"`
 	Kind string          `json:"kind"`
-	Last int64           `json:"last"` // unix milliseconds
-	Step int64           `json:"step"` // nanoseconds
+	Last int64           `json:"last"`          // unix milliseconds
+	Sub  int64           `json:"sub,omitempty"` // nanoseconds within the last millisecond
+	Step int64           `json:"step"`          // nanoseconds
 	Data json.RawMessage `json:"data"`
 }
 
@@ -124,10 +131,12 @@ func SnapshotOf(f Fitted) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, err
 	}
+	last := p.lastTime.UTC()
 	return Snapshot{
 		V:    SnapshotVersion,
 		Kind: p.kind,
-		Last: p.lastTime.UTC().UnixMilli(),
+		Last: last.UnixMilli(),
+		Sub:  int64(last.Nanosecond() % 1_000_000),
 		Step: int64(p.step),
 		Data: data,
 	}, nil
@@ -186,8 +195,11 @@ func Restore(s Snapshot) (Fitted, error) {
 	if s.Step <= 0 {
 		return nil, ErrInvalidSnapshot
 	}
+	if s.Sub < 0 || s.Sub >= 1_000_000 {
+		return nil, ErrInvalidSnapshot
+	}
 	p := pointForecast{
-		lastTime: time.UnixMilli(s.Last).UTC(),
+		lastTime: time.UnixMilli(s.Last).UTC().Add(time.Duration(s.Sub)),
 		step:     time.Duration(s.Step),
 		kind:     s.Kind,
 	}

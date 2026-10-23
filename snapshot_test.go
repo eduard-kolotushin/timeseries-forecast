@@ -103,6 +103,38 @@ func TestSnapshotRoundTrip(t *testing.T) {
 	}
 }
 
+// TestSnapshotPreservesSubMillisecondLastTime pins the envelope's timestamp
+// precision: Last is unix milliseconds, so a fit whose last point carries a
+// sub-millisecond fraction would otherwise restore onto a different grid.
+func TestSnapshotPreservesSubMillisecondLastTime(t *testing.T) {
+	t.Parallel()
+	start := time.Date(2026, 1, 12, 10, 0, 0, 123456, time.UTC)
+	times := []time.Time{start, start.Add(time.Microsecond), start.Add(2 * time.Microsecond)}
+	m, err := FitNaive(mustSeries(times, []float64{1, 2, 3}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := roundTripJSON(t, m)
+	fc, err := got.Forecast(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := start.Add(3 * time.Microsecond)
+	if !fc.Times()[0].Equal(want) {
+		t.Fatalf("restored forecast time %v, want %v", fc.Times()[0], want)
+	}
+}
+
+func TestSnapshotRejectsInvalidSubMillisecondOffset(t *testing.T) {
+	t.Parallel()
+	for _, sub := range []int64{-1, 1_000_000} {
+		s := Snapshot{V: 1, Kind: kindNaive, Step: int64(time.Second), Sub: sub, Data: []byte(`{"last":1,"sigma":1}`)}
+		if _, err := Restore(s); !errors.Is(err, ErrInvalidSnapshot) {
+			t.Fatalf("sub=%d: err = %v, want ErrInvalidSnapshot", sub, err)
+		}
+	}
+}
+
 func TestSnapshotOfRejectsACustomCalendar(t *testing.T) {
 	t.Parallel()
 	cal, err := ParseProductionCalendar([]byte("2026;1;1;1;1;1;1;1;1;1;1;1;1"), nil)

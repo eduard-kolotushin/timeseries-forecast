@@ -37,7 +37,7 @@ func FitSeasonalBaseline(s timeseries.Series[float64], season Seasonality, cal *
 func FitSES(s timeseries.Series[float64], alpha float64) (Fitted, error)
 func FitHolt(s timeseries.Series[float64], alpha, beta float64) (Fitted, error)
 
-type Snapshot struct { V int; Kind string; Last, Step int64; Data json.RawMessage }
+type Snapshot struct { V int; Kind string; Last, Sub, Step int64; Data json.RawMessage }
 func SnapshotOf(f Fitted) (Snapshot, error)
 func Restore(s Snapshot) (Fitted, error)
 
