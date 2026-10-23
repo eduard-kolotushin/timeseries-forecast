@@ -15,7 +15,7 @@ Implement models in an **optimized** way: one pass to fit, O(1) work per horizon
 | Package name | `forecast` |
 | Go version | 1.26+ |
 | Core series library | `github.com/eduard-kolotushin/timeseries` (tagged module; no `replace`) |
-| Horizon clock | last timestamp + `k * step` for `k ≥ 1`. `Forecast(h)` emits `k = 1..h`. `ForecastRange(from, to)` emits grid points with `from ≤ t ≤ to` (skip earlier `k`; no backcast before `last+step`; no off-grid times). |
+| Horizon clock | Grid `last + k * step` for any integer `k`. `k ≥ 1` is the forecast horizon, `k ≤ 0` is a final-state backcast of the same fitted model (values from the snapshot's state; bands only where a model stores a per-key SE — the seasonal baseline — otherwise `NaN`). `Forecast(h)` emits `k = 1..h`; `ForecastRange(from, to)` emits the grid points with `from ≤ t ≤ to`, any sign of `k` (no off-grid times). |
 | Calendars | Optional, file-embedded production calendars in this package (RU first); default off. Not a Series concern. |
 
 ## v1 must-have
@@ -36,9 +36,9 @@ Implement models in an **optimized** way: one pass to fit, O(1) work per horizon
 
 ## v3 must-have
 
-- `Fitted.ForecastRange(from, to)` and `ForecastIntervalRange(from, to, level)`: emit the `last+k×step` grid inside `[from, to]`
-- Skip to the first `k ≥ 1` with `t ≥ from` in O(1); fill only window points (O(h_window), not a walk of skipped `k`)
-- Empty window (inverted range, shorter than `step`, or entirely before `last+step`) fails with a sentinel error
+- `Fitted.ForecastRange(from, to)` and `ForecastIntervalRange(from, to, level)`: emit the `last+k×step` grid inside `[from, to]` for any integer `k` (`k ≤ 0` is a final-state backcast; only the seasonal baseline has bands there)
+- Locate the first and last `k` inside the window in O(1) (`ceil`/`floor` of the signed offsets); fill only window points (O(h_window), not a walk of skipped `k`)
+- Empty window (inverted range, or one with no grid point, such as shorter than `step`) fails with a sentinel error
 - A window may emit at most `MaxForecastPoints` grid points; a wider window, or a horizon too distant to express as `k×step`, fails with `ErrTooManyPoints` before anything is allocated (the caller is a panel or a worker, never trusted with an unbounded allocation)
 
 ## v4 must-have

@@ -50,9 +50,11 @@ Callers use the public `timeseries` API only (`Times`, `Values`, `New`, `DropNA`
 
 Forecast `h` is the number of future points. Timestamps are `last.Add(k*step)` for `k=1..h`. `step` is `times[n-1]-times[n-2]` after DropNA.
 
-`ForecastRange(from, to)` uses the same grid. It finds the first `k≥1` with `t_k ≥ from` in O(1) (`k = ceil((from-last)/step)`, then `k = max(1, k)`), the last `k` with `t_k ≤ to`, and fills only that slice. `Forecast(h)` is the range `(last+step) .. (last+h×step)`. An inverted range or a window with no grid point returns `ErrRange` / `ErrEmptyRange`.
+`ForecastRange(from, to)` uses the same grid for any integer `k`: `k ≥ 1` is the forecast horizon, `k ≤ 0` evaluates the final fitted state at or before the last training timestamp (a backcast). Values come from the fitted state alone (`last`, `mu`, `last+k·b`, the seasonal phase, the baseline's per-key mean, `level`, `level+k·trend`), never from the training series. Bands at `k ≤ 0` exist only for the seasonal baseline (its per-key SE is looked up by timestamp); every other model returns `NaN` there because its interval is a horizon widening.
 
-A window may emit at most `MaxForecastPoints` (1 000 000) points. A wider one — or a `to` so distant that `Sub` saturates (about 292 years) — returns `ErrTooManyPoints` before any slice is allocated. All four entry points (`Forecast`, `ForecastInterval`, `ForecastRange`, `ForecastIntervalRange`) go through the same check, so no request can turn a range into an unbounded response.
+The range finds the first `k` with `t_k ≥ from` and the last with `t_k ≤ to` in O(1): `k0 = ceil((from-last)/step)`, `k1 = floor((to-last)/step)`, both signed (Go's truncating division already ceils a negative numerator; the floor rounds a negative remainder down), and fills only that slice. `Forecast(h)` is the range `(last+step) .. (last+h×step)`. An inverted range returns `ErrRange`; a window with no grid point (e.g. entirely between two steps) returns `ErrEmptyRange`.
+
+A window may emit at most `MaxForecastPoints` (1 000 000) points. A wider one — or a bound so distant that `Sub` saturates (about 292 years, on either side) — returns `ErrTooManyPoints` before any slice is allocated. All four entry points (`Forecast`, `ForecastInterval`, `ForecastRange`, `ForecastIntervalRange`) go through the same check, which bounds the point count and `|k|×step` for both signs, so no request can turn a range into an unbounded response.
 
 ## Prediction intervals
 

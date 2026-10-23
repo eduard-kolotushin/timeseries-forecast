@@ -328,3 +328,88 @@ func TestSeasonalBaselineIntervalSingleBucketNaN(t *testing.T) {
 		t.Fatalf("want NaN for n=1 hour bucket, got %v %v", lo.Values()[22], hi.Values()[22])
 	}
 }
+
+func TestForecastIntervalRangeBackcast(t *testing.T) {
+	t.Parallel()
+	z := z95()
+	start := time.Date(2026, 1, 12, 10, 0, 0, 0, time.UTC) // Monday 10:00
+	bs := mustSeries([]time.Time{
+		start,
+		start.Add(time.Hour),
+		start.Add(24 * time.Hour),
+		start.Add(25 * time.Hour),
+	}, []float64{8, 1, 12, 1})
+	baseline := mustFit(t, func() (Fitted, error) { return FitSeasonalBaseline(bs, SeasonHour, nil) })
+
+	// The baseline looks its per-key SE up by grid timestamp, so a week before
+	// the training range has the same band as that hour's horizon step.
+	priorMonday := start.AddDate(0, 0, -7)
+	lo, hi, err := baseline.ForecastIntervalRange(priorMonday, priorMonday, 0.95)
+	if err != nil {
+		t.Fatal(err)
+	}
+	se := 2 * math.Sqrt(1.5)
+	wantLo, wantHi := 10-z*se, 10+z*se
+	if !almostEqual(lo.Values()[0], wantLo) || !almostEqual(hi.Values()[0], wantHi) {
+		t.Fatalf("baseline backcast bounds %v %v want %v %v", lo.Values()[0], hi.Values()[0], wantLo, wantHi)
+	}
+
+	// A bucket with one sample has no stored SE in-sample either.
+	single := mustFit(t, func() (Fitted, error) {
+		return FitSeasonalBaseline(mustSeries(
+			[]time.Time{start, start.Add(time.Hour)},
+			[]float64{8, 1},
+		), SeasonHour, nil)
+	})
+	slo, shi, err := single.ForecastIntervalRange(start, start, 0.95)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !math.IsNaN(slo.Values()[0]) || !math.IsNaN(shi.Values()[0]) {
+		t.Fatalf("single-sample backcast bounds = %v %v, want NaN NaN", slo.Values()[0], shi.Values()[0])
+	}
+
+	base := series(1, 2, 3, 4)
+	tests := []struct {
+		name string
+		m    Fitted
+		last time.Time
+	}{
+		{"naive", mustFit(t, func() (Fitted, error) { return FitNaive(base) }), tAt(3)},
+		{"mean", mustFit(t, func() (Fitted, error) { return FitMean(base) }), tAt(3)},
+		{"drift", mustFit(t, func() (Fitted, error) { return FitDrift(base) }), tAt(3)},
+		{"seasonal", mustFit(t, func() (Fitted, error) { return FitSeasonalNaive(series(5, 6, 7, 8, 1, 2), 4) }), tAt(5)},
+		{"ses", mustFit(t, func() (Fitted, error) { return FitSES(base, 0.5) }), tAt(3)},
+		{"holt", mustFit(t, func() (Fitted, error) { return FitHolt(base, 0.5, 0.5) }), tAt(3)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lo, hi, err := tt.m.ForecastIntervalRange(tt.last.Add(-2*time.Second), tt.last, 0.95)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if lo.Len() != 3 || hi.Len() != 3 {
+				t.Fatalf("lens = %d, %d, want 3", lo.Len(), hi.Len())
+			}
+			for i := range 3 {
+				if !math.IsNaN(lo.Values()[i]) || !math.IsNaN(hi.Values()[i]) {
+					t.Fatalf("k=%d bounds = %v %v, want NaN NaN", i-2, lo.Values()[i], hi.Values()[i])
+				}
+			}
+		})
+	}
+
+	// A straddling window keeps the horizon formula for k >= 1 and NaN for the
+	// backcast half. This naive fit's three unit residuals make σ = 1.
+	naive := mustFit(t, func() (Fitted, error) { return FitNaive(base) })
+	slo, shi, err = naive.ForecastIntervalRange(tAt(3), tAt(4), 0.95)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !math.IsNaN(slo.Values()[0]) || !math.IsNaN(shi.Values()[0]) {
+		t.Fatalf("k=0 bounds = %v %v, want NaN NaN", slo.Values()[0], shi.Values()[0])
+	}
+	if !almostEqual(slo.Values()[1], 4-z) || !almostEqual(shi.Values()[1], 4+z) {
+		t.Fatalf("k=1 bounds = %v %v, want %v %v", slo.Values()[1], shi.Values()[1], 4-z, 4+z)
+	}
+}

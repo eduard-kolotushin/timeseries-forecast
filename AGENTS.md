@@ -22,7 +22,7 @@ This repo is one root of the Cursor workspace `timeseries-workspace.code-workspa
 
 - Depend on `timeseries.Series[float64]` for input and output; do not fork Series
 - Public ops do not mutate caller series
-- Future timestamps: last time + `k*step` for `k≥1` (step inferred from the last interval unless given). `Forecast(h)` uses `k=1..h`; `ForecastRange` keeps points in `[from, to]`
+- Timestamps: last time + `k*step` (step inferred from the last interval unless given). `k≥1` is the horizon and `k≤0` evaluates the final fitted state (backcast); `Forecast(h)` uses `k=1..h`; `ForecastRange` keeps every grid point in `[from, to]`, signed `k` included; bands at `k≤0` only for the seasonal baseline, `NaN` elsewhere
 - Missing values: DropNA before fit; `math.NaN()` in outputs where undefined
 - Stay within v1/v2/v3/v4 scope unless `docs/INTENTIONS.md` is updated first
 - Implement fits in linear time; O(1) work per horizon step; pre-size forecast slices

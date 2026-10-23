@@ -58,7 +58,12 @@ func TestWindowKCap(t *testing.T) {
 		// was clamped to 1, and a 106751-point grid ran from last+step for ~292 years
 		// instead of the single point at the requested time.
 		{"overflowing ceiling near the saturated horizon", day, farLast, farLast, 106751, 106751, nil},
-		{"before the grid", time.Minute, minute(-1), minute(-1), 0, 0, ErrEmptyRange},
+		// The grid is signed: k <= 0 evaluates the final fitted state (a backcast).
+		{"one step before the last point", time.Minute, minute(-1), minute(-1), -1, -1, nil},
+		{"straddling the last point", time.Minute, minute(-1), minute(1), -1, 1, nil},
+		{"one over the cap ending before the last point", time.Minute, minute(-MaxForecastPoints - 1), minute(-1), 0, 0, ErrTooManyPoints},
+		// 300 years back saturates time.Time.Sub at minDuration.
+		{"saturated backcast", time.Minute, base.AddDate(-300, 0, 0), base.AddDate(-300, 0, 0), 0, 0, ErrTooManyPoints},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

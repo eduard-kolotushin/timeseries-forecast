@@ -67,9 +67,9 @@ func main() {
 | `FitSES` | constant smoothed level |
 | `FitHolt` | level + k × trend |
 
-Future times are `last + k*step` for `k ≥ 1`, with `step` taken from the last two observations. `Forecast(h)` uses `k = 1..h`. `ForecastRange(from, to)` keeps grid points in `[from, to]`.
+Times are `last + k*step`, with `step` taken from the last two observations. `k ≥ 1` is the horizon; `Forecast(h)` uses `k = 1..h`. `ForecastRange(from, to)` keeps every grid point in `[from, to]` for any integer `k`, so `k ≤ 0` evaluates the final fitted state at or before the last training timestamp (a backcast).
 
-`ForecastInterval(h, level)` returns Gaussian lower/upper series at coverage `level` in `(0, 1)`.
+`ForecastInterval(h, level)` returns Gaussian lower/upper series at coverage `level` in `(0, 1)`. Bands at `k ≤ 0` exist only for the seasonal baseline (per-bucket SE); other models return `NaN` there.
 
 ## Agents
 

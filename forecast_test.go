@@ -202,8 +202,17 @@ func TestForecastRange(t *testing.T) {
 	if _, err := naive.ForecastRange(tAt(6), tAt(5)); err != ErrRange {
 		t.Fatalf("inverted: %v", err)
 	}
-	if _, err := naive.ForecastRange(tAt(0), tAt(3)); err != ErrEmptyRange {
+	back, err := naive.ForecastRange(tAt(0), tAt(3))
+	if err != nil {
 		t.Fatalf("backcast: %v", err)
+	}
+	if back.Len() != 4 || !back.Times()[0].Equal(tAt(0)) || !back.Times()[3].Equal(tAt(3)) {
+		t.Fatalf("backcast times: %v", back.Times())
+	}
+	for i, v := range back.Values() {
+		if v != 4 {
+			t.Fatalf("backcast value %d = %v, want 4 (the final observation)", i, v)
+		}
 	}
 	if _, err := naive.ForecastRange(tAt(4).Add(500*time.Millisecond), tAt(4).Add(500*time.Millisecond)); err != ErrEmptyRange {
 		t.Fatalf("off-grid: %v", err)
@@ -222,6 +231,106 @@ func TestForecastRange(t *testing.T) {
 	}
 	if _, _, err := holt.ForecastIntervalRange(tAt(5), tAt(6), 0.95); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestForecastRangeBackcast(t *testing.T) {
+	t.Parallel()
+	base := series(1, 2, 3, 4)
+	last, step := tAt(3), time.Second
+	naive := mustFit(t, func() (Fitted, error) { return FitNaive(base) })
+	mean := mustFit(t, func() (Fitted, error) { return FitMean(base) })
+	drift := mustFit(t, func() (Fitted, error) { return FitDrift(base) })
+	ses := mustFit(t, func() (Fitted, error) { return FitSES(base, 0.5) })
+	holt := mustFit(t, func() (Fitted, error) { return FitHolt(base, 0.5, 0.5) })
+
+	tests := []struct {
+		name string
+		m    Fitted
+		want []float64 // k = -2, -1, 0
+	}{
+		{"naive", naive, []float64{4, 4, 4}},
+		{"mean", mean, []float64{2.5, 2.5, 2.5}},
+		{"drift", drift, []float64{2, 3, 4}},
+		{"ses", ses, []float64{3.125, 3.125, 3.125}},
+		{"holt", holt, []float64{2, 3, 4}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.m.ForecastRange(last.Add(-2*step), last)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Len() != 3 {
+				t.Fatalf("Len() = %d, want 3", got.Len())
+			}
+			if !got.Times()[0].Equal(last.Add(-2*step)) || !got.Times()[2].Equal(last) {
+				t.Fatalf("times = %v", got.Times())
+			}
+			for i, want := range tt.want {
+				if got.Values()[i] != want {
+					t.Fatalf("k=%d value = %v, want %v", i-2, got.Values()[i], want)
+				}
+			}
+
+			one, err := tt.m.ForecastRange(last, last)
+			if err != nil || one.Len() != 1 || one.Values()[0] != tt.want[2] {
+				t.Fatalf("k=0 window: len=%d values=%v err=%v", one.Len(), one.Values(), err)
+			}
+
+			straddle, err := tt.m.ForecastRange(last.Add(-2*step), last.Add(2*step))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if straddle.Len() != 5 {
+				t.Fatalf("straddling window len = %d, want 5", straddle.Len())
+			}
+			for i := range 5 {
+				if !straddle.Times()[i].Equal(last.Add(time.Duration(i-2) * step)) {
+					t.Fatalf("straddling timestamp %d = %v", i, straddle.Times()[i])
+				}
+			}
+		})
+	}
+
+	// Seasonal naive: the season is the last period, so k <= 0 must keep walking
+	// the phase backwards instead of indexing the slice negatively.
+	seasonal := mustFit(t, func() (Fitted, error) { return FitSeasonalNaive(series(5, 6, 7, 8, 1, 2), 4) })
+	back, err := seasonal.ForecastRange(tAt(0), tAt(3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantSeasonal := []float64{1, 2, 7, 8} // k = -5..-2
+	if back.Len() != len(wantSeasonal) {
+		t.Fatalf("seasonal backcast len = %d, want %d", back.Len(), len(wantSeasonal))
+	}
+	for i, want := range wantSeasonal {
+		if back.Values()[i] != want {
+			t.Fatalf("seasonal k=%d value = %v, want %v", i-5, back.Values()[i], want)
+		}
+	}
+
+	// Baseline: the stored per-key means answer any timestamp on the grid, even
+	// one a week before the training range began.
+	start := time.Date(2026, 1, 12, 10, 0, 0, 0, time.UTC) // Monday 10:00
+	bs := mustSeries([]time.Time{
+		start,
+		start.Add(time.Hour),
+		start.Add(24 * time.Hour),
+		start.Add(25 * time.Hour),
+	}, []float64{8, 1, 12, 1})
+	baseline := mustFit(t, func() (Fitted, error) { return FitSeasonalBaseline(bs, SeasonHour, nil) })
+	priorMonday := start.AddDate(0, 0, -7)
+	b, err := baseline.ForecastRange(priorMonday, priorMonday)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.Len() != 1 || b.Values()[0] != 10 || !b.Times()[0].Equal(priorMonday) {
+		t.Fatalf("baseline backcast: times=%v values=%v, want one point at %v = 10", b.Times(), b.Values(), priorMonday)
+	}
+	atLast, err := baseline.ForecastRange(start.Add(25*time.Hour), start.Add(25*time.Hour))
+	if err != nil || atLast.Len() != 1 || atLast.Values()[0] != 1 {
+		t.Fatalf("baseline k=0: len=%d values=%v err=%v", atLast.Len(), atLast.Values(), err)
 	}
 }
 

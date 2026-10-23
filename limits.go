@@ -15,9 +15,13 @@ const MaxForecastPoints = 1_000_000
 // reaches it is not a horizon this package can state as k×step.
 const maxDuration = time.Duration(math.MaxInt64)
 
-// checkWindow validates an inclusive 1-based k window before anything is
-// allocated: k0 ≤ k1, at most MaxForecastPoints points, and k1×step bounded by a
-// time.Duration (at and se look a grid timestamp up as lastTime + k×step).
+// minDuration is the negative saturation point of time.Time.Sub.
+const minDuration time.Duration = -1 << 63
+
+// checkWindow validates an inclusive signed k window before anything is
+// allocated: k0 ≤ k1, at most MaxForecastPoints points, and |k|×step bounded by
+// a time.Duration (at and se look a grid timestamp up as lastTime + k×step;
+// k ≤ 0 is a backcast on the same grid).
 func (f pointForecast) checkWindow(k0, k1 int) error {
 	if f.step <= 0 {
 		return ErrNoFrequency
@@ -25,10 +29,13 @@ func (f pointForecast) checkWindow(k0, k1 int) error {
 	if k1 < k0 {
 		return ErrEmptyRange
 	}
-	if k1-k0 >= MaxForecastPoints {
+	// Unsigned subtraction: the signed difference of two extremes can overflow
+	// int64, while the modulo-2^64 result is the exact span for k1 >= k0.
+	if uint64(k1)-uint64(k0) >= MaxForecastPoints {
 		return ErrTooManyPoints
 	}
-	if int64(k1) > int64(maxDuration)/int64(f.step) {
+	maxK := int64(maxDuration) / int64(f.step)
+	if int64(k1) > maxK || int64(k0) < -maxK {
 		return ErrTooManyPoints
 	}
 	return nil

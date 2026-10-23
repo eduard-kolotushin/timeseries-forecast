@@ -7,7 +7,10 @@ import (
 	"github.com/eduard-kolotushin/timeseries"
 )
 
-// Fitted is a model trained on a series, ready to produce future points.
+// Fitted is a model trained on a series. Forecast and ForecastInterval emit the
+// horizon last+k*step for k = 1..h; the Range methods evaluate the fitted state
+// at every grid point last+k*step inside [from, to] for any integer k, so
+// k <= 0 is a backcast of the final state (the baseline also has bands there).
 type Fitted interface {
 	Forecast(h int) (timeseries.Series[float64], error)
 	ForecastInterval(h int, level float64) (timeseries.Series[float64], timeseries.Series[float64], error)
@@ -131,8 +134,10 @@ func (f pointForecast) intervalK(k0, k1 int, z float64) (timeseries.Series[float
 	return lower, upper, nil
 }
 
-// windowK returns inclusive 1-based k bounds for grid points in [from, to].
-// It rejects a window wider than MaxForecastPoints before any allocation.
+// windowK returns inclusive signed k bounds for grid points in [from, to]:
+// k >= 1 is the forecast horizon, k <= 0 evaluates the final fitted state on
+// the same grid (a backcast). It rejects a window wider than MaxForecastPoints
+// before any allocation.
 func (f pointForecast) windowK(from, to time.Time) (int, int, error) {
 	if f.step <= 0 {
 		return 0, 0, ErrNoFrequency
@@ -140,36 +145,39 @@ func (f pointForecast) windowK(from, to time.Time) (int, int, error) {
 	if from.After(to) {
 		return 0, 0, ErrRange
 	}
-	d := to.Sub(f.lastTime)
-	if d == maxDuration {
-		// Sub saturates about 292 years out, so the real distance is unknown:
-		// reject the horizon instead of emitting points from a clamped one.
+	lo := from.Sub(f.lastTime)
+	hi := to.Sub(f.lastTime)
+	// Sub saturates about 292 years out on either side, so the real distance
+	// is unknown: reject instead of emitting points from a clamped one.
+	if hi == maxDuration || lo == minDuration {
 		return 0, 0, ErrTooManyPoints
 	}
-	k0 := int(ceilDuration(from.Sub(f.lastTime), f.step))
-	if k0 < 1 {
-		k0 = 1
-	}
-	k1 := int(d / f.step)
+	k0 := int(ceilDuration(lo, f.step))
+	k1 := int(floorDuration(hi, f.step))
 	if err := f.checkWindow(k0, k1); err != nil {
 		return 0, 0, err
 	}
 	return k0, k1, nil
 }
 
+// ceilDuration returns ceil(num/den) for den > 0, exact for negative num too:
+// Go's truncating division already ceils a negative num with a remainder, and a
+// positive one rounds up. Divide before any arithmetic: int64(num)+int64(den)-1
+// wraps in the step-wide band below maxDuration.
 func ceilDuration(num, den time.Duration) int64 {
-	if den <= 0 {
-		return 0
-	}
-	if num <= 0 {
-		return 0
-	}
-	// Divide before adding: int64(num)+int64(den)-1 wraps for a num in the
-	// step-wide band below maxDuration, which is exactly where windowK may be
-	// asked for a legitimate point (the saturated distance itself is rejected).
 	q := int64(num) / int64(den)
-	if int64(num)%int64(den) != 0 {
+	if int64(num) > 0 && int64(num)%int64(den) != 0 {
 		q++
+	}
+	return q
+}
+
+// floorDuration returns floor(num/den) for den > 0: a negative num with a
+// remainder rounds down instead of truncating toward zero.
+func floorDuration(num, den time.Duration) int64 {
+	q := int64(num) / int64(den)
+	if int64(num) < 0 && int64(num)%int64(den) != 0 {
+		q--
 	}
 	return q
 }
@@ -200,7 +208,11 @@ func (f pointForecast) at(k int) float64 {
 		if f.period <= 0 || len(f.season) == 0 {
 			return math.NaN()
 		}
-		return f.season[(k-1)%f.period]
+		idx := (k - 1) % f.period
+		if idx < 0 {
+			idx += f.period
+		}
+		return f.season[idx]
 	case kindBaseline:
 		t := f.lastTime.Add(time.Duration(k) * f.step)
 		local := t.In(zoneFor(f.cal, t))
@@ -227,6 +239,11 @@ func (f pointForecast) se(k int) float64 {
 			return math.NaN()
 		}
 		return f.ses[key]
+	}
+	if k <= 0 {
+		// Backcast bands: only the baseline stores a per-key standard error.
+		// Every other model's interval is a horizon widening undefined at k <= 0.
+		return math.NaN()
 	}
 	if math.IsNaN(f.sigma) {
 		return math.NaN()
